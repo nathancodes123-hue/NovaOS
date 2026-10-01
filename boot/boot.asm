@@ -1,6 +1,9 @@
 BITS 16
 ORG 0x7C00
 
+KERNEL_SECTORS EQU 240
+KERNEL_LOAD   EQU 0x1000
+
 start:
     cli
     xor ax, ax
@@ -10,14 +13,11 @@ start:
     mov sp, 0x7C00
     mov [boot_drive], dl
 
-    mov ax, 0x0013
-    int 0x10
-
     mov si, msg
     call print
 
-    mov word [dap.count], 120
-    mov word [dap.offset], 0x1000
+    mov word [dap.count], KERNEL_SECTORS
+    mov word [dap.offset], KERNEL_LOAD
     mov word [dap.segment], 0x0000
     mov dword [dap.lba_low], 1
     mov dword [dap.lba_high], 0
@@ -61,7 +61,7 @@ protected_mode:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    call 0x1000
+    call KERNEL_LOAD
 .halt:
     cli
     hlt
