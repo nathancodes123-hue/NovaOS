@@ -66,23 +66,6 @@ int process_create(const char *name) {
     return -1;
 }
 
-int process_exec(const char *name, u32 entry) {
-    if (!name || !entry)
-        return -1;
-
-    int pid = process_create(name);
-    if (pid < 0)
-        return -1;
-
-    for (u32 i = 0; i < MAX_PROCESSES; ++i) {
-        if (proc[i].pid == (u32)pid) {
-            proc[i].entry = entry;
-            break;
-        }
-    }
-    return pid;
-}
-
 int process_exec_pe(const char *name) {
     PEInfo info;
     u32 entry_rva = 0;
