@@ -7,7 +7,7 @@ extern void kfree(void *ptr);
 extern void paging_identity_map_first_4m(void);
 extern void interrupts_init(void);
 extern void process_init(void);
-extern int process_exec(const char *name, u32 entry);
+extern int process_exec_pe(const char *name);
 extern void process_exit(int status);
 extern u32 process_current_pid(void);
 extern void scheduler(void);
@@ -126,9 +126,9 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
             return 0;
 
         case SYS_EXEC:
-            if (!arg1 || !arg2)
+            if (!arg1)
                 return (u32)-1;
-            return (u32)process_exec((const char *)arg1, arg2);
+            return (u32)process_exec_pe((const char *)arg1);
 
         default:
             return (u32)-1;
