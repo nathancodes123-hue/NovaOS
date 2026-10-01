@@ -92,7 +92,7 @@ int pe_load(const char *name, PEInfo *info, u32 *entry) {
 
     PE32Optional *opt = (PE32Optional *)(image + opt_off);
     if (opt->magic != PE32_MAGIC || !opt->image_size ||
-        opt->headers_size > opt->image_size ||
+        opt->headers_size > opt->image_size || opt->headers_size > size ||
         opt->entry_rva >= opt->image_size) {
         kfree(image);
         return -1;
@@ -107,10 +107,16 @@ int pe_load(const char *name, PEInfo *info, u32 *entry) {
 
     for (u32 i = 0; i < coff->sections; ++i) {
         PESection *s = (PESection *)(image + sec_off + i * sizeof(PESection));
+        u32 mapped = s->virtual_size > s->raw_size ? s->virtual_size : s->raw_size;
+        if (mapped) {
+            if (s->virtual_address > opt->image_size ||
+                mapped > opt->image_size - s->virtual_address) {
+                kfree(image);
+                return -1;
+            }
+        }
         if (s->raw_size) {
-            if (s->raw_offset > size || s->raw_size > size - s->raw_offset ||
-                s->virtual_address > opt->image_size ||
-                s->raw_size > opt->image_size - s->virtual_address) {
+            if (s->raw_offset > size || s->raw_size > size - s->raw_offset) {
                 kfree(image);
                 return -1;
             }
