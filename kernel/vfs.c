@@ -13,3 +13,17 @@ int vfs_mkdir(u32 parent,const char*n){if(!n||find_child(parent,n))return 0;retu
 int vfs_create(u32 parent,const char*n){if(!n||find_child(parent,n))return 0;return alloc(parent,VFS_FILE,n)!=NULL;}
 int vfs_write(u32 inode,const u8*d,u32 n){for(u32 i=0;i<MAX_FILES;i++)if(nodes[i].used&&nodes[i].inode==inode&&nodes[i].type==VFS_FILE){if(n>sizeof(nodes[i].data))n=sizeof(nodes[i].data);for(u32 j=0;j<n;j++)nodes[i].data[j]=d[j];nodes[i].size=n;return n;}return -1;}
 int vfs_read(u32 inode,u8*d,u32 n){for(u32 i=0;i<MAX_FILES;i++)if(nodes[i].used&&nodes[i].inode==inode){if(n>nodes[i].size)n=nodes[i].size;for(u32 j=0;j<n;j++)d[j]=nodes[i].data[j];return n;}return -1;}
+
+
+u32 vfs_find(const char *name) {
+    if (!name) return 0;
+    VNode *node = find_child(1, name);
+    return node ? node->inode : 0;
+}
+
+u32 vfs_size(u32 inode) {
+    for (u32 i = 0; i < MAX_FILES; ++i)
+        if (nodes[i].used && nodes[i].inode == inode)
+            return nodes[i].size;
+    return 0;
+}
