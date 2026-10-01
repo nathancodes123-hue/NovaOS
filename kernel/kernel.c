@@ -2,7 +2,7 @@
 #include "../include/nova/io.h"
 
 extern void mm_init(void);
-extern void* kmalloc(usize size);
+extern void *kmalloc(usize size);
 extern void kfree(void *ptr);
 extern void paging_identity_map_first_4m(void);
 extern void interrupts_init(void);
@@ -57,19 +57,19 @@ static void print(const char *s) {
 
 static void clear_screen(void) {
     volatile u16 *vga = (volatile u16 *)0xB8000;
-    for (u32 i = 0; i < 80 * 25; ++i) vga[i] = 0x0720;
+    for (u32 i = 0; i < 80 * 25; ++i)
+        vga[i] = 0x0720;
 }
 
-/*
- * NovaOS syscall ABI:
- *   EAX = syscall number
- *   EBX = arg1
- *   ECX = arg2
- *   EDX = arg3
- *   INT 0x80
- *
- * EAX receives the return value.
- */
+void panic(const char *message) {
+    cli();
+    clear_screen();
+    print("NovaOS kernel panic:\n");
+    print(message ? message : "unknown fault");
+    for (;;)
+        hlt();
+}
+
 u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
     switch (number) {
         case SYS_EXIT:
@@ -77,14 +77,12 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
             return 0;
 
         case SYS_WRITE: {
-            if (!arg1 || !arg2) return (u32)-1;
-            if (arg1 != 1 && arg1 != 2) return (u32)-1;
+            if (!arg1 || !arg2 || (arg1 != 1 && arg1 != 2))
+                return (u32)-1;
 
             const char *text = (const char *)arg2;
-            u32 count = arg3;
             u32 written = 0;
-
-            while (written < count && text[written]) {
+            while (written < arg3 && text[written]) {
                 putc(text[written]);
                 ++written;
             }
@@ -92,11 +90,9 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
         }
 
         case SYS_READ:
-            /* Keyboard/input queues will supply data here. */
             return 0;
 
         case SYS_OPEN:
-            /* Path lookup/file descriptor tables will be connected to VFS. */
             return arg1 ? 3 : (u32)-1;
 
         case SYS_CLOSE:
@@ -106,15 +102,13 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
             return process_current_pid();
 
         case SYS_SLEEP:
-            syscall_ticks += arg1;
-            return 0;
+            return syscall_ticks + arg1;
 
         case SYS_YIELD:
-            scheduler();
+            /* Real context switching is not implemented yet. */
             return 0;
 
         case SYS_MKDIR:
-            /* VFS implementation is the next layer for pathname lookup. */
             return arg1 ? 0 : (u32)-1;
 
         case SYS_CREATE:
@@ -124,23 +118,16 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
             return syscall_ticks;
 
         case SYS_MALLOC:
-            if (!arg1) return 0;
-            return (u32)kmalloc((usize)arg1);
+            return arg1 ? (u32)kmalloc((usize)arg1) : 0;
 
         case SYS_FREE:
-            if (arg1) kfree((void *)arg1);
+            if (arg1)
+                kfree((void *)arg1);
             return 0;
 
         case SYS_EXEC:
-            if (!arg1) return (u32)-1;
-            /*
-             * arg1 = process/program name
-             * arg2 = entry address
-             *
-             * The process subsystem creates the process and records its
-             * entry point. A real user address-space loader will replace
-             * this direct-entry interface when the executable loader lands.
-             */
+            if (!arg1 || !arg2)
+                return (u32)-1;
             return (u32)process_exec((const char *)arg1, arg2);
 
         default:
@@ -187,7 +174,6 @@ void kmain(void) {
     print("\nNovaOS kernel ready.\n");
 
     for (;;) {
-        scheduler();
         gui_render();
         hlt();
     }
