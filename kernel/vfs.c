@@ -5,7 +5,6 @@
 enum{VFS_DIR,VFS_FILE};
 typedef struct{u32 inode,parent,size,type;u8 used;char name[MAX_NAME];u8 data[1024];} VNode;
 static VNode nodes[MAX_FILES];static u32 next_inode=1;
-static void *memset(void *dst,int value,u32 n){u8*p=(u8*)dst;for(u32 i=0;i<n;i++)p[i]=(u8)value;return dst;}
 static void cp(char*d,const char*s){u32 i=0;while(i<MAX_NAME-1&&s[i]){d[i]=s[i];i++;}d[i]=0;}
 static VNode*find_child(u32 parent,const char*n){for(u32 i=0;i<MAX_FILES;i++)if(nodes[i].used&&nodes[i].parent==parent){u32 j=0;while(nodes[i].name[j]&&n[j]&&nodes[i].name[j]==n[j])j++;if(!nodes[i].name[j]&&!n[j])return &nodes[i];}return NULL;}
 static VNode*alloc(u32 parent,u32 type,const char*n){for(u32 i=0;i<MAX_FILES;i++)if(!nodes[i].used){nodes[i]=(VNode){.inode=next_inode++,.parent=parent,.size=0,.type=type,.used=1};cp(nodes[i].name,n);return &nodes[i];}return NULL;}
