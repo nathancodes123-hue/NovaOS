@@ -2,8 +2,6 @@ CC ?= gcc
 LD ?= ld
 OBJCOPY ?= objcopy
 CFLAGS=-m32 -ffreestanding -fno-pie -fno-stack-protector -fno-builtin -O2 -Wall -Wextra -mgeneral-regs-only -Iinclude
-ASFLAGS=-m32
-LDFLAGS=-m elf_i386 -T linker.ld
 
 KERNEL_OBJS=kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/gui.o
 
@@ -16,11 +14,11 @@ boot.bin: boot/boot.asm
 kernel/%.o: kernel/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-kernel/%.o: kernel/%.S
-	$(CC) $(ASFLAGS) -c $< -o $@
+kernel/interrupts_asm.o: kernel/interrupts_asm.asm
+	nasm -f elf32 $< -o $@
 
 kernel.bin: $(KERNEL_OBJS) linker.ld
-	$(LD) $(LDFLAGS) $(KERNEL_OBJS) -o kernel.elf
+	$(LD) -m elf_i386 -T linker.ld $(KERNEL_OBJS) -o kernel.elf
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z kernel.bin) -le 61440
 
