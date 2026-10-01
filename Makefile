@@ -3,6 +3,10 @@ LD ?= $(shell if command -v ld.lld >/dev/null 2>&1; then command -v ld.lld; elif
 OBJCOPY ?= $(shell if command -v objcopy >/dev/null 2>&1; then command -v objcopy; elif command -v llvm-objcopy >/dev/null 2>&1; then command -v llvm-objcopy; elif [ -x /opt/local/libexec/llvm-19/bin/llvm-objcopy ]; then echo /opt/local/libexec/llvm-19/bin/llvm-objcopy; else echo llvm-objcopy; fi)
 CFLAGS=-m32 -ffreestanding -fno-pie -fno-stack-protector -fno-builtin -O2 -Wall -Wextra -mgeneral-regs-only -Iinclude
 
+ifeq ($(shell uname -s 2>/dev/null),Darwin)
+CFLAGS += --target=i386-unknown-none-elf
+endif
+
 KERNEL_OBJS=kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/gui.o
 
 all: novaos.bin
