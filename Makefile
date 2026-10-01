@@ -22,7 +22,7 @@ kernel/%.o: kernel/%.S
 kernel.bin: $(KERNEL_OBJS) linker.ld
 	$(LD) $(LDFLAGS) $(KERNEL_OBJS) -o kernel.elf
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
-	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z kernel.bin) -le 122880
+	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z kernel.bin) -le 61440
 
 novaos.bin: boot.bin kernel.bin
 	cat boot.bin kernel.bin > $@
