@@ -4998,4 +4998,3 @@ static const u32 nova_capability_4917 = 4917u;
 static const u32 nova_capability_4918 = 4918u;
 static const u32 nova_capability_4919 = 4919u;
 static const u32 nova_capability_4920 = 4920u;
-static const u32 nova_capability_4921 = 4921u;
