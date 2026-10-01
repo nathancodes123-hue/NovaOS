@@ -1,4 +1,5 @@
 #include "../include/nova/types.h"
+#include "../include/nova/pe.h"
 
 extern void *kmalloc(usize);
 
@@ -79,6 +80,27 @@ int process_exec(const char *name, u32 entry) {
             break;
         }
     }
+    return pid;
+}
+
+int process_exec_pe(const char *name) {
+    PEInfo info;
+    u32 entry_rva = 0;
+
+    if (pe_load(name, &info, &entry_rva) != 0)
+        return -1;
+
+    int pid = process_create(name);
+    if (pid < 0)
+        return -1;
+
+    for (u32 i = 0; i < MAX_PROCESSES; ++i) {
+        if (proc[i].pid == (u32)pid) {
+            proc[i].entry = info.image_base + entry_rva;
+            break;
+        }
+    }
+
     return pid;
 }
 
