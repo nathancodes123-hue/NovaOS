@@ -1,10 +1,12 @@
 #include "../include/nova/types.h"
 #include "../include/nova/mm.h"
 #include "../include/nova/paging.h"
+#include "../include/nova/pagefile.h"
 
 #define PD_ENTRIES 1024u
 #define PT_ENTRIES 1024u
 #define MAX_KERNEL_TABLES 16u
+#define SWAP_WINDOW 0x04000000u
 
 #define PRESENT 0x001u
 #define WRITE   0x002u
@@ -38,10 +40,6 @@ static u32 read_cr0(void) {
 
 static void write_cr0(u32 value) {
     __asm__ volatile ("mov %0, %%cr0" :: "r"(value) : "memory");
-}
-
-static u32 page_align_down(u32 address) {
-    return address & PAGE_MASK;
 }
 
 static int page_aligned(u32 address) {
@@ -174,7 +172,6 @@ int paging_alloc_page(u32 virt, u32 flags) {
         return 0;
     }
 
-    /* Zero through the mapped virtual address, not the raw physical address. */
     u8 *p = (u8 *)virt;
     for (u32 i = 0; i < PAGE_SIZE; ++i)
         p[i] = 0;
@@ -221,6 +218,72 @@ int paging_free_pages(u32 virt, u32 pages) {
             ++freed;
     }
     return freed == pages;
+}
+
+int paging_swap_out(u32 virt, u32 slot) {
+    u32 phys;
+    u32 flags;
+
+    if (!pagefile_available() || !page_aligned(virt))
+        return 0;
+    if (!paging_get(virt, &phys, &flags))
+        return 0;
+    if (virt == SWAP_WINDOW)
+        return 0;
+
+    u32 window_phys;
+    if (paging_get(SWAP_WINDOW, &window_phys, NULL))
+        return 0;
+
+    if (!paging_map(SWAP_WINDOW, phys, flags & (WRITE | USER)))
+        return 0;
+
+    int ok = pagefile_write(slot, (const void *)SWAP_WINDOW);
+    paging_unmap(SWAP_WINDOW);
+
+    if (!ok)
+        return 0;
+
+    if (!pagefile_bind(slot, virt, flags & (WRITE | USER))) {
+        return 0;
+    }
+
+    return paging_free_page(virt);
+}
+
+int paging_swap_in(u32 virt, u32 slot, u32 flags) {
+    if (!pagefile_available() || !page_aligned(virt))
+        return 0;
+    if (paging_get(virt, &(u32){0}, NULL))
+        return 0;
+
+    u32 phys = mm_alloc_frame();
+    if (!phys)
+        return 0;
+
+    u32 window_phys;
+    if (virt == SWAP_WINDOW ||
+        paging_get(SWAP_WINDOW, &window_phys, NULL) ||
+        !paging_map(SWAP_WINDOW, phys, flags & (WRITE | USER))) {
+        mm_free_frame(phys);
+        return 0;
+    }
+
+    if (!pagefile_read(slot, (void *)SWAP_WINDOW)) {
+        paging_unmap(SWAP_WINDOW);
+        mm_free_frame(phys);
+        return 0;
+    }
+
+    paging_unmap(SWAP_WINDOW);
+
+    if (!paging_map(virt, phys, flags & (WRITE | USER))) {
+        mm_free_frame(phys);
+        return 0;
+    }
+
+    pagefile_free(slot);
+    return 1;
 }
 
 u32 paging_directory(void) {
