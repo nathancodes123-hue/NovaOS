@@ -144,7 +144,7 @@ u32 vfs_resolve(u32 cwd,const char *path){
 int vfs_unlink(u32 parent,const char *name){
     u32 inode=path_child(parent,name); if(!inode||inode==vfs_root())return 0;
     u32 type=0;if(!vfs_stat(inode,&type,NULL,NULL))return 0;
-    if(type==NOVA_VFS_DIR){char child[48];u32 ci,ct;if(vfs_list(inode,0,child,sizeof(child),&ci,&ct))return 0;}
+    if(type==VFS_DIR){char child[48];u32 ci,ct;if(vfs_list(inode,0,child,sizeof(child),&ci,&ct))return 0;}
     for(u32 i=0;i<MAX_FILES;++i)if(nodes[i].used&&nodes[i].inode==inode){nodes[i].used=0;return 1;}
     return 0;
 }
