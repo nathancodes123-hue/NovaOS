@@ -131,3 +131,51 @@ u32 process_current_pid(void) {
 u32 process_current_entry(void) {
     return current < MAX_PROCESSES ? proc[current].entry : 0;
 }
+
+int process_find(u32 pid) {
+    for (u32 i = 0; i < MAX_PROCESSES; ++i)
+        if (proc[i].state != PROC_UNUSED && proc[i].pid == pid)
+            return (int)i;
+    return -1;
+}
+
+u32 process_count(void) {
+    u32 count = 0;
+    for (u32 i = 0; i < MAX_PROCESSES; ++i)
+        if (proc[i].state != PROC_UNUSED)
+            ++count;
+    return count;
+}
+
+u32 process_ready_count(void) {
+    u32 count = 0;
+    for (u32 i = 0; i < MAX_PROCESSES; ++i)
+        if (proc[i].state == PROC_READY)
+            ++count;
+    return count;
+}
+
+int process_state(u32 pid) {
+    int index = process_find(pid);
+    return index < 0 ? PROC_UNUSED : proc[index].state;
+}
+
+const char *process_name(u32 pid) {
+    int index = process_find(pid);
+    return index < 0 ? NULL : proc[index].name;
+}
+
+int process_kill(u32 pid, int status) {
+    (void)status;
+
+    int index = process_find(pid);
+    if (index < 0 || (u32)index == current)
+        return 0;
+
+    if (proc[index].stack)
+        kfree(proc[index].stack);
+
+    proc[index].stack = NULL;
+    proc[index].state = PROC_ZOMBIE;
+    return 1;
+}
