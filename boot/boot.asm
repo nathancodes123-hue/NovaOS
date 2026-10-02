@@ -14,6 +14,9 @@ start:
     mov sp, 0x7C00
     mov [boot_drive], dl
 
+    ; BIOS disk services may require hardware interrupts.
+    sti
+
     mov si, msg
     call print
 
@@ -92,6 +95,7 @@ start:
     mov si, read_ok_msg
     call print
 
+    cli
     lgdt [gdt_descriptor]
     mov eax, cr0
     or eax, 1
