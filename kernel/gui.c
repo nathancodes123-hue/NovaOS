@@ -1,11 +1,10 @@
 #include "../include/nova/types.h"
+#include "../include/nova/display.h"
 
-#define TEXT_WIDTH 80
-#define TEXT_HEIGHT 25
 #define MAX_WINDOWS 16
 
 typedef struct {
-    int x, y, w, h;
+    u32 x, y, w, h;
     u8 visible, active;
     u32 color;
     const char *title;
@@ -13,83 +12,72 @@ typedef struct {
 
 static Window windows[MAX_WINDOWS];
 static u32 count;
-static volatile u16 *const vga = (volatile u16 *)0xB8000;
 
-static void text_cell(int x, int y, char c, u8 attr)
+static void fill(u32 x, u32 y, u32 w, u32 h, u32 color)
 {
-    if (x < 0 || x >= TEXT_WIDTH || y < 0 || y >= TEXT_HEIGHT)
-        return;
-    vga[(u32)y * TEXT_WIDTH + (u32)x] = ((u16)attr << 8) | (u8)c;
+    const NovaDisplayInfo *d = display_info();
+    if (!d->graphics) return;
+
+    if (x >= d->width || y >= d->height) return;
+    if (w > d->width - x) w = d->width - x;
+    if (h > d->height - y) h = d->height - y;
+
+    volatile u32 *fb = (volatile u32 *)d->framebuffer;
+
+    for (u32 yy = 0; yy < h; ++yy)
+        for (u32 xx = 0; xx < w; ++xx)
+            fb[(y + yy) * d->width + (x + xx)] = color;
 }
 
-static void text_fill(int x, int y, int w, int h, char c, u8 attr)
+static void border(u32 x, u32 y, u32 w, u32 h, u32 color)
 {
-    for (int yy = 0; yy < h; ++yy)
-        for (int xx = 0; xx < w; ++xx)
-            text_cell(x + xx, y + yy, c, attr);
+    if (w < 2 || h < 2) return;
+
+    fill(x, y, w, 3, color);
+    fill(x, y + h - 3, w, 3, color);
+    fill(x, y, 3, h, color);
+    fill(x + w - 3, y, 3, h, color);
 }
 
-static void text_label(int x, int y, const char *s, u8 attr)
+static void window_draw(const Window *w)
 {
-    if (!s) return;
-    while (*s && x < TEXT_WIDTH)
-        text_cell(x++, y, *s++, attr);
+    if (!w || !w->visible) return;
+
+    fill(w->x, w->y, w->w, w->h, 0xFF20242Bu);
+    fill(w->x, w->y, w->w, 42, 0xFF303640u);
+    border(w->x, w->y, w->w, w->h, 0xFFE0E5ECu);
 }
 
-static void text_window(const Window *w)
+void gui_open(u32 x, u32 y, u32 w, u32 h, const char *title)
 {
-    if (!w || !w->visible || w->w < 2 || w->h < 2)
-        return;
-
-    int right = w->x + w->w - 1;
-    int bottom = w->y + w->h - 1;
-
-    text_fill(w->x, w->y, w->w, w->h, ' ', 0x07);
-
-    for (int x = w->x; x <= right; ++x) {
-        text_cell(x, w->y, '-', 0x0F);
-        text_cell(x, bottom, '-', 0x0F);
-    }
-
-    for (int y = w->y; y <= bottom; ++y) {
-        text_cell(w->x, y, '|', 0x0F);
-        text_cell(right, y, '|', 0x0F);
-    }
-
-    text_cell(w->x, w->y, '+', 0x0F);
-    text_cell(right, w->y, '+', 0x0F);
-    text_cell(w->x, bottom, '+', 0x0F);
-    text_cell(right, bottom, '+', 0x0F);
-    text_label(w->x + 2, w->y, w->title, 0x0F);
-}
-
-void gui_open(int x, int y, int w, int h, const char *title)
-{
-    if (count >= MAX_WINDOWS)
-        return;
-    windows[count++] = (Window){x, y, w, h, 1, 1, 7, title};
+    if (count >= MAX_WINDOWS) return;
+    windows[count++] = (Window){x, y, w, h, 1, 1, 0xFF20242Bu, title};
 }
 
 void gui_init(void)
 {
     count = 0;
 
-    /*
-     * NovaOS remains in VGA text mode at this stage. Never treat 0xA0000
-     * as a linear framebuffer until a real graphics mode is configured.
-     */
-    gui_open(8, 4, 64, 14, "Nova Desktop");
+    if (!display_init())
+        return;
+
+    gui_open(80, 60, 1120, 600, "Nova Desktop");
 }
 
 void gui_render(void)
 {
-    /*
-     * Text-mode-safe GUI placeholder. The old renderer wrote a 320x200
-     * image directly to 0xA0000 without switching the VGA hardware mode.
-     */
-    for (int y = 3; y < 19; ++y)
-        text_fill(7, y, 66, 16, ' ', 0x07);
+    const NovaDisplayInfo *d = display_info();
+    if (!d->graphics) return;
+
+    fill(0, 0, d->width, d->height, 0xFF101820u);
+
+    /* 720p desktop layout scales naturally to the selected framebuffer. */
+    u32 taskbar_h = d->height / 14u;
+    if (taskbar_h < 48u) taskbar_h = 48u;
+    if (taskbar_h > 120u) taskbar_h = 120u;
+
+    fill(0, d->height - taskbar_h, d->width, taskbar_h, 0xFF202830u);
 
     for (u32 i = 0; i < count; ++i)
-        text_window(&windows[i]);
+        window_draw(&windows[i]);
 }
