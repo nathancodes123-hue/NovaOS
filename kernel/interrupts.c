@@ -41,8 +41,10 @@ static void pic_remap(void) {
     outb(0xA1, 0x02); io_wait();
     outb(0x21, 0x01); io_wait();
     outb(0xA1, 0x01); io_wait();
-    outb(0x21, (u8)(master_mask | 1u));
-    outb(0xA1, (u8)(slave_mask | 1u));
+
+    // Keep hardware IRQs masked until kernel initialization is complete.
+    outb(0x21, (u8)(master_mask | 0xFFu));
+    outb(0xA1, (u8)(slave_mask | 0xFFu));
 }
 
 void irq_timer(void) {
@@ -83,11 +85,8 @@ void interrupts_init(void) {
     set_gate(128, syscall_entry, 0xee);
 
     lidt();
-
-    ; Interrupts are deliberately kept disabled until kernel initialization
-    ; has completed. kmain enables them after all subsystems are ready.
 }
- 
+
 u32 interrupt_ticks(void) {
     return irq_ticks;
 }
