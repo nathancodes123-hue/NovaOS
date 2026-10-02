@@ -105,7 +105,6 @@ u32 syscall_dispatch(u32 number, u32 arg1, u32 arg2, u32 arg3) {
             return syscall_ticks + arg1;
 
         case SYS_YIELD:
-            /* Real context switching is not implemented yet. */
             return 0;
 
         case SYS_MKDIR:
@@ -144,9 +143,13 @@ void syscall_tick(void) {
 }
 
 void kmain(void) {
-    clear_screen();
+    /*
+     * Do not clear the screen here. The bootloader's "Disk OK" marker is
+     * useful evidence that disk loading completed, and clearing it makes
+     * early boot failures look like bootloader failures.
+     */
+    print("KERNEL START\n");
 
-    print("NovaOS\n");
     print("Initializing memory... ");
     mm_init();
     print("OK\n");
