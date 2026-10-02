@@ -7,7 +7,7 @@ ifeq ($(shell uname -s 2>/dev/null),Darwin)
 CFLAGS += --target=i386-unknown-none-elf
 endif
 
-KERNEL_OBJS=kernel/start.o kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/string.o kernel/pe.o kernel/gui.o
+KERNEL_OBJS=kernel/start_bss.o kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/string.o kernel/pe.o kernel/gui.o
 
 all: novaos.bin
 
@@ -18,7 +18,7 @@ boot.bin: boot/boot.asm
 kernel/%.o: kernel/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-kernel/start.o: kernel/start.asm
+kernel/start_bss.o: kernel/start_bss.asm
 	nasm -f elf32 $< -o $@
 
 kernel/interrupts_asm.o: kernel/interrupts_asm.asm
@@ -27,7 +27,7 @@ kernel/interrupts_asm.o: kernel/interrupts_asm.asm
 kernel.bin: $(KERNEL_OBJS) linker.ld
 	$(LD) -m elf_i386 -T linker.ld $(KERNEL_OBJS) -o kernel.elf
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
-	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z kernel.bin) -le 61440
+	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z $@) -le 61440
 
 novaos.bin: boot.bin kernel.bin
 	cat boot.bin kernel.bin > $@
