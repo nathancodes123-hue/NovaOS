@@ -2,7 +2,13 @@
 #include "../include/nova/block.h"
 #include "../include/nova/pagefile.h"
 
+typedef struct {
+    u32 virt;
+    u32 flags;
+} SwapBinding;
+
 static u32 slot_bits[NOVA_PAGEFILE_PAGES / 32u];
+static SwapBinding bindings[NOVA_PAGEFILE_PAGES];
 static u32 used_pages;
 static int available;
 
@@ -38,6 +44,7 @@ static void slot_clear(u32 slot) {
 
 void pagefile_init(void) {
     zero(slot_bits, sizeof(slot_bits));
+    zero(bindings, sizeof(bindings));
     used_pages = 0;
     available = 0;
 
@@ -45,11 +52,6 @@ void pagefile_init(void) {
     if (!dev || !dev->present || dev->sector_size != 512u)
         return;
 
-    /*
-     * The page file occupies a fixed raw-disk region beginning at LBA 256.
-     * It is intentionally outside the boot/kernel area. The allocation
-     * bitmap lives only in RAM and is rebuilt empty on every boot.
-     */
     if (dev->sector_count &&
         (u64)NOVA_PAGEFILE_START_LBA +
         (u64)NOVA_PAGEFILE_PAGES * NOVA_PAGEFILE_SECTORS_PER_PAGE >
@@ -72,6 +74,8 @@ int pagefile_alloc(u32 *slot) {
             continue;
 
         slot_set(i);
+        bindings[i].virt = 0;
+        bindings[i].flags = 0;
         ++used_pages;
         *slot = i;
         return 1;
@@ -85,12 +89,14 @@ void pagefile_free(u32 slot) {
         return;
 
     slot_clear(slot);
+    bindings[slot].virt = 0;
+    bindings[slot].flags = 0;
     if (used_pages)
         --used_pages;
 }
 
 int pagefile_write(u32 slot, const void *page) {
-    if (!available || !valid_slot(slot) || !page)
+    if (!available || !valid_slot(slot) || !page || !slot_used(slot))
         return 0;
 
     u64 lba = (u64)NOVA_PAGEFILE_START_LBA +
@@ -107,6 +113,34 @@ int pagefile_read(u32 slot, void *page) {
               (u64)slot * NOVA_PAGEFILE_SECTORS_PER_PAGE;
 
     return block_read(lba, NOVA_PAGEFILE_SECTORS_PER_PAGE, page);
+}
+
+int pagefile_bind(u32 slot, u32 virt, u32 flags) {
+    if (!available || !valid_slot(slot) || !slot_used(slot) ||
+        !(virt & (NOVA_PAGEFILE_PAGE_SIZE - 1u)) == 0)
+        return 0;
+
+    bindings[slot].virt = virt;
+    bindings[slot].flags = flags;
+    return 1;
+}
+
+int pagefile_slot_for(u32 virt, u32 *slot, u32 *flags) {
+    if (!available || !slot)
+        return 0;
+
+    u32 page = virt & ~(NOVA_PAGEFILE_PAGE_SIZE - 1u);
+    for (u32 i = 0; i < NOVA_PAGEFILE_PAGES; ++i) {
+        if (!slot_used(i) || bindings[i].virt != page)
+            continue;
+
+        *slot = i;
+        if (flags)
+            *flags = bindings[i].flags;
+        return 1;
+    }
+
+    return 0;
 }
 
 u32 pagefile_total_pages(void) {
