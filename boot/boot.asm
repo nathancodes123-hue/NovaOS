@@ -4,6 +4,8 @@ ORG 0x7C00
 KERNEL_SECTORS EQU 120
 KERNEL_LOAD   EQU 0x1000
 DISK_RETRIES  EQU 3
+READ1_SECTORS EQU 64
+READ2_SECTORS EQU 56
 
 start:
     cli
@@ -17,7 +19,7 @@ start:
     mov si, msg
     call print
 
-    mov word [dap.count], KERNEL_SECTORS
+    mov word [dap.count], READ1_SECTORS
     mov word [dap.offset], KERNEL_LOAD
     mov word [dap.segment], 0x0000
     mov dword [dap.lba_low], 1
@@ -25,7 +27,27 @@ start:
 
     mov byte [retry_count], DISK_RETRIES
 
-.read_retry:
+.read_first:
+    mov dl, [boot_drive]
+    mov si, dap
+    mov ah, 0x42
+    int 0x13
+    jnc .first_ok
+
+    xor ah, ah
+    mov dl, [boot_drive]
+    int 0x13
+    dec byte [retry_count]
+    jnz .read_first
+    jmp disk_error
+
+.first_ok:
+    mov word [dap.count], READ2_SECTORS
+    mov word [dap.offset], KERNEL_LOAD + (READ1_SECTORS * 512)
+    mov dword [dap.lba_low], 1 + READ1_SECTORS
+    mov byte [retry_count], DISK_RETRIES
+
+.read_second:
     mov dl, [boot_drive]
     mov si, dap
     mov ah, 0x42
@@ -36,8 +58,7 @@ start:
     mov dl, [boot_drive]
     int 0x13
     dec byte [retry_count]
-    jnz .read_retry
-
+    jnz .read_second
     jmp disk_error
 
 .read_ok:
