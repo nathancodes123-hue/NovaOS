@@ -24,13 +24,34 @@ static u16 cursor_x,cursor_y;
 
 static void vga_disable_cursor(void){outb(0x3D4,0x0A);outb(0x3D5,0x20);}
 
+static void vga_scroll(void){
+    volatile u16*vga=(volatile u16*)0xB8000;
+    for(u32 y=1;y<25u;++y)
+        for(u32 x=0;x<80u;++x)
+            vga[(y-1u)*80u+x]=vga[y*80u+x];
+    for(u32 x=0;x<80u;++x)
+        vga[24u*80u+x]=0x0720;
+    cursor_y=24;
+}
+
+static void vga_advance_line(void){
+    cursor_x=0;
+    if(++cursor_y>=25u)vga_scroll();
+}
+
 void putc(char c){
     volatile u16*vga=(volatile u16*)0xB8000;
     if(c=='\r')return;
-    if(c=='\n'){cursor_x=0;if(++cursor_y>=25)cursor_y=0;return;}
-    if(c=='\b'){if(cursor_x)--cursor_x;vga[cursor_y*80+cursor_x]=0x0720;return;}
-    vga[cursor_y*80+cursor_x]=(u16)(0x0700u|(u8)c);
-    if(++cursor_x>=80){cursor_x=0;if(++cursor_y>=25)cursor_y=0;}
+    if(c=='\n'){vga_advance_line();return;}
+    if(c=='\b'){
+        if(cursor_x>0){
+            --cursor_x;
+            vga[cursor_y*80u+cursor_x]=0x0720;
+        }
+        return;
+    }
+    vga[cursor_y*80u+cursor_x]=(u16)(0x0700u|(u8)c);
+    if(++cursor_x>=80u)vga_advance_line();
 }
 static void print(const char*s){if(s)while(*s)putc(*s++);}
 static void print_u32(u32 value){char b[11];u32 i=0;if(!value){putc('0');return;}while(value&&i<sizeof(b)-1u){b[i++]=(char)('0'+value%10u);value/=10u;}while(i)putc(b[--i]);}
