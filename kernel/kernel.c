@@ -95,7 +95,7 @@ u32 syscall_dispatch(u32 n,u32 a1,u32 a2,u32 a3) {
     case SYS_CLOSE:
         return fd_close((int)a1) ? 0 : (u32)-1;
     case SYS_GETPID: return process_current_pid();
-    case SYS_SLEEP: return syscall_ticks+a1;
+    case SYS_SLEEP: return process_sleep(a1) ? 0 : (u32)-1;
     case SYS_YIELD: scheduler(); return 0;
     case SYS_MKDIR:
         return a1 ? (u32)(vfs_mkdir(vfs_root(), (const char *)a1) ? 0 : -1) : (u32)-1;
