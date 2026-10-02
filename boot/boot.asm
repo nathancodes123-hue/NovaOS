@@ -7,7 +7,6 @@ start:
     cli
     xor ax, ax
     mov ds, ax
-    mov es, ax
     mov ss, ax
     mov sp, 0x7C00
     mov [boot_drive], dl
@@ -35,6 +34,11 @@ start:
 
     mov si, geom_ok
     call print
+
+    ; Keep the bootloader at 0x7C00-0x7DFF safe.
+    ; Load the kernel at physical 0x10000 instead.
+    mov ax, 0x1000
+    mov es, ax
 
     xor ax, ax
     mov [sector_index], ax
@@ -70,9 +74,9 @@ start:
     mov dh, [head]
     mov dl, [boot_drive]
 
+    ; ES:BX = 0x10000 + sector_index * 0x200.
     mov bx, [sector_index]
     shl bx, 9
-    add bx, 0x1000
 
     mov ax, 0x0201
     int 0x13
@@ -159,7 +163,7 @@ protected_mode:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    jmp 0x1000
+    jmp 0x10000
 
 BITS 16
 boot_drive db 0
