@@ -122,7 +122,8 @@ void kmain(void) {
     serial_write("NovaOS kernel boot\\n");
     rtc_init();
 
-    print("Initializing RTC... "); print(rtc_read((NovaRtcTime[1]){0}) ? "OK\\n" : "unavailable\\n");
+    NovaRtcTime rtc_time;
+    print("Initializing RTC... "); print(rtc_read(&rtc_time) ? "OK\n" : "unavailable\n");
     print("Initializing guest tools... ");
     guest_tools_init();
     print("OK"); if (guest_is_virtualized()) print(" (virtualized)"); print("\n");
