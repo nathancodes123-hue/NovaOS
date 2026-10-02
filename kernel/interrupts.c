@@ -1,6 +1,8 @@
 #include "../include/nova/types.h"
 #include "../include/nova/io.h"
 #include "../include/nova/interrupts.h"
+#include "../include/nova/pagefile.h"
+#include "../include/nova/paging.h"
 
 typedef struct { u16 limit; u32 base; } __attribute__((packed)) IDTR;
 typedef struct { u16 off_lo; u16 sel; u8 zero; u8 flags; u16 off_hi; } __attribute__((packed)) IDTEntry;
@@ -57,7 +59,22 @@ static void pic_remap(void){
 }
 void irq_timer(void){++irq_ticks;syscall_tick();process_tick();}
 void irq_keyboard(void){u8 sc=inb(0x60);if(sc==0x2A||sc==0x36){key_shift=1;return;}if(sc==0xAA||sc==0xB6){key_shift=0;return;}if(sc&0x80u)return;u8 c=scancode_ascii(sc);if(c)key_push(c);}
-void exception_handler(u32 vector,u32 error){(void)error;extern void panic(const char*);if(vector==14)panic("page fault");panic("CPU exception");}
+void exception_handler(u32 vector,u32 error){
+    extern void panic(const char*);
+    if(vector==14){
+        u32 fault_address;
+        __asm__ volatile("mov %%cr2,%0":"=r"(fault_address));
+        if(!(error&1u)){
+            u32 slot,flags;
+            u32 page=fault_address&PAGE_MASK;
+            if(pagefile_slot_for(page,&slot,&flags) &&
+               paging_swap_in(page,slot,flags))
+                return;
+        }
+        panic("page fault");
+    }
+    panic("CPU exception");
+}
 void interrupts_init(void){
     cli(); irq_ticks=0; key_head=key_tail=0; key_shift=0;
     for(u32 i=0;i<256;++i)set_gate((u8)i,isr31,0x8e);
