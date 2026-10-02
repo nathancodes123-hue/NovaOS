@@ -24,17 +24,27 @@ enum { SYS_EXIT=0, SYS_WRITE, SYS_READ, SYS_OPEN, SYS_CLOSE, SYS_GETPID,
 static volatile u32 syscall_ticks;
 static u16 cursor_x, cursor_y;
 
+static void vga_update_cursor(void) {
+    u16 position = (u16)(cursor_y * 80u + cursor_x);
+    outb(0x3D4, 0x0F);
+    outb(0x3D5, (u8)(position & 0xFFu));
+    outb(0x3D4, 0x0E);
+    outb(0x3D5, (u8)(position >> 8));
+}
+
 void putc(char c) {
     volatile u16 *vga = (volatile u16 *)0xB8000;
-    if (c == '\r') return;
-    if (c == '\n') { cursor_x = 0; if (++cursor_y >= 25) cursor_y = 0; return; }
+    if (c == '\r') { vga_update_cursor(); return; }
+    if (c == '\n') { cursor_x = 0; if (++cursor_y >= 25) cursor_y = 0; vga_update_cursor(); return; }
     if (c == '\b') {
         if (cursor_x) --cursor_x;
         vga[cursor_y * 80 + cursor_x] = 0x0720;
+        vga_update_cursor();
         return;
     }
     vga[cursor_y * 80 + cursor_x] = (u16)(0x0700u | (u8)c);
     if (++cursor_x >= 80) { cursor_x = 0; if (++cursor_y >= 25) cursor_y = 0; }
+    vga_update_cursor();
 }
 
 static void print(const char *s) { if (s) while (*s) putc(*s++); }
@@ -55,6 +65,7 @@ static void clear_screen(void) {
     volatile u16 *vga=(volatile u16*)0xB8000;
     for (u32 i=0;i<80u*25u;++i) vga[i]=0x0720;
     cursor_x=cursor_y=0;
+    vga_update_cursor();
 }
 
 void panic(const char *message) {
