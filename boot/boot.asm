@@ -49,14 +49,11 @@ start:
     mov byte [retries], 3
 
 .read_attempt:
-    ; BIOS calls are allowed to alter general registers.
-    ; Re-establish the kernel destination segment before every read.
     mov ax, 0x1000
     mov es, ax
 
     ; sector_index is the zero-based index within kernel.bin.
-    ; The kernel starts at disk LBA 1 because boot.bin occupies LBA 0.
-    ; Convert the corresponding one-based disk sector to CHS.
+    ; boot.bin occupies disk LBA 0, so the kernel begins at LBA 1.
     xor dx, dx
     mov ax, [sector_index]
     inc ax
@@ -83,7 +80,6 @@ start:
     mov dh, [head]
     mov dl, [boot_drive]
 
-    ; ES:BX = 0x10000 + sector_index * 0x200.
     mov bx, [sector_index]
     shl bx, 9
 
@@ -91,7 +87,6 @@ start:
     int 0x13
     jnc .read_ok
 
-    ; Reset the drive before retrying.
     xor ah, ah
     mov dl, [boot_drive]
     int 0x13
@@ -175,7 +170,11 @@ protected_mode:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    jmp 0x10000
+
+    ; Jump to the linked kernel entry using an absolute register target.
+    ; This avoids a bad relative displacement in the flat boot sector.
+    mov eax, 0x10000
+    jmp eax
 
 BITS 16
 boot_drive db 0
