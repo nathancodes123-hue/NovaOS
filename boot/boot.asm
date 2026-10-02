@@ -2,7 +2,6 @@ BITS 16
 ORG 0x7C00
 
 KERNEL_SECTORS EQU 120
-KERNEL_LOAD EQU 0x1000
 
 start:
     cli
@@ -16,11 +15,9 @@ start:
 
     mov si, msg
     call print
-
     mov si, step1
     call print
 
-    ; Verify BIOS INT 13h extensions.
     mov dl, [boot_drive]
     mov ah, 0x41
     mov bx, 0x55AA
@@ -33,18 +30,13 @@ start:
 
     mov si, step2
     call print
-
-    ; Read exactly one sector per BIOS call.
-    ; This deliberately avoids transfer-size and DMA-boundary quirks.
-    xor di, di
-    mov word [sector_index], 0
+    xor ax, ax
+    mov [sector_index], ax
 
 .read_next:
     mov si, step3
-    call print
+    call print_hex8
 
-    ; Physical destination = 0x1000 + sector_index * 512.
-    ; Convert it to a segment with offset 0.
     mov ax, [sector_index]
     shl ax, 5
     add ax, 0x0100
@@ -53,26 +45,34 @@ start:
     mov word [dap.count], 1
     mov word [dap.offset], 0
 
-    ; LBA = sector_index + 1.
     xor eax, eax
     mov ax, [sector_index]
     inc eax
     mov [dap.lba_low], eax
     mov dword [dap.lba_high], 0
 
+    mov byte [retries], 3
+
+.try_read:
     mov dl, [boot_drive]
     mov si, dap
     mov ah, 0x42
     int 0x13
-    jc disk_error
+    jnc .read_ok
 
+    xor ah, ah
+    int 0x13
+    dec byte [retries]
+    jnz .try_read
+    jmp disk_error
+
+.read_ok:
     inc word [sector_index]
     cmp word [sector_index], KERNEL_SECTORS
     jb .read_next
 
     mov si, read_ok_msg
     call print
-
     cli
     lgdt [gdt_descriptor]
     mov eax, cr0
@@ -105,6 +105,31 @@ print:
 .done:
     ret
 
+print_hex8:
+    mov al, [sector_index]
+    mov ah, al
+    shr al, 4
+    call print_nibble
+    mov al, ah
+    and al, 0x0F
+    call print_nibble
+    mov al, ' '
+    mov ah, 0x0E
+    int 0x10
+    ret
+
+print_nibble:
+    cmp al, 10
+    jb .digit
+    add al, 'A' - 10
+    jmp .out
+.digit:
+    add al, '0'
+.out:
+    mov ah, 0x0E
+    int 0x10
+    ret
+
 BITS 32
 protected_mode:
     mov ax, 0x10
@@ -116,19 +141,15 @@ protected_mode:
     mov esp, 0x90000
     jmp 0x1000
 
-.halt32:
-    cli
-    hlt
-    jmp .halt32
-
 BITS 16
 boot_drive db 0
 sector_index dw 0
+retries db 0
 
 msg db 'NovaOS booting...',13,10,0
 step1 db ' BIOS...',0
 step2 db ' LBA OK...',0
-step3 db ' R',0
+step3 db ' ',0
 read_ok_msg db ' Disk OK',13,10,0
 lba_err db ' LBA unavailable.',13,10,0
 err db ' Disk read failed.',13,10,0
