@@ -19,3 +19,5 @@ int vfs_list(u32 parent, u32 index, char *name, u32 name_size, u32 *inode, u32 *
 u32 vfs_find(const char *name);
 u32 vfs_size(u32 inode);
 u32 vfs_root(void);
+u32 vfs_resolve(u32 cwd, const char *path);
+int vfs_unlink(u32 parent, const char *name);
