@@ -5,6 +5,7 @@ KERNEL_SECTORS EQU 120
 
 start:
     cli
+    cld
     xor ax, ax
     mov ds, ax
     mov ss, ax
@@ -48,6 +49,11 @@ start:
     mov byte [retries], 3
 
 .read_attempt:
+    ; BIOS calls are allowed to alter general registers.
+    ; Re-establish the kernel destination segment before every read.
+    mov ax, 0x1000
+    mov es, ax
+
     ; Convert zero-based LBA in sector_index to CHS.
     xor dx, dx
     mov ax, [sector_index]
@@ -82,7 +88,9 @@ start:
     int 0x13
     jnc .read_ok
 
+    ; Reset the drive before retrying.
     xor ah, ah
+    mov dl, [boot_drive]
     int 0x13
     dec byte [retries]
     jnz .read_attempt
@@ -119,6 +127,7 @@ halt:
     jmp .hang
 
 print:
+    cld
     lodsb
     test al, al
     jz .done
