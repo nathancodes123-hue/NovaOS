@@ -23,3 +23,6 @@ u32 process_ready_count(void);
 int process_state(u32 pid);
 const char *process_name(u32 pid);
 int process_kill(u32 pid, int status);
+void process_tick(void);
+int process_sleep(u32 ticks);
+void process_wake(u32 pid);
