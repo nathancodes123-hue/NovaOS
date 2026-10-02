@@ -27,3 +27,96 @@ u32 vfs_size(u32 inode) {
             return nodes[i].size;
     return 0;
 }
+
+int vfs_stat(u32 inode, u32 *type, u32 *size, u32 *parent) {
+    for (u32 i = 0; i < MAX_FILES; ++i) {
+        if (!nodes[i].used || nodes[i].inode != inode)
+            continue;
+        if (type) *type = nodes[i].type;
+        if (size) *size = nodes[i].size;
+        if (parent) *parent = nodes[i].parent;
+        return 1;
+    }
+    return 0;
+}
+
+int vfs_write_at(u32 inode, u32 offset, const u8 *data, u32 n) {
+    if (!data)
+        return -1;
+
+    for (u32 i = 0; i < MAX_FILES; ++i) {
+        if (!nodes[i].used || nodes[i].inode != inode || nodes[i].type != VFS_FILE)
+            continue;
+        if (offset >= sizeof(nodes[i].data))
+            return 0;
+        if (n > sizeof(nodes[i].data) - offset)
+            n = sizeof(nodes[i].data) - offset;
+
+        for (u32 j = 0; j < n; ++j)
+            nodes[i].data[offset + j] = data[j];
+
+        if (offset + n > nodes[i].size)
+            nodes[i].size = offset + n;
+        return (int)n;
+    }
+    return -1;
+}
+
+int vfs_read_at(u32 inode, u32 offset, u8 *data, u32 n) {
+    if (!data)
+        return -1;
+
+    for (u32 i = 0; i < MAX_FILES; ++i) {
+        if (!nodes[i].used || nodes[i].inode != inode)
+            continue;
+        if (offset >= nodes[i].size)
+            return 0;
+        if (n > nodes[i].size - offset)
+            n = nodes[i].size - offset;
+
+        for (u32 j = 0; j < n; ++j)
+            data[j] = nodes[i].data[offset + j];
+        return (int)n;
+    }
+    return -1;
+}
+
+int vfs_truncate(u32 inode) {
+    for (u32 i = 0; i < MAX_FILES; ++i) {
+        if (!nodes[i].used || nodes[i].inode != inode || nodes[i].type != VFS_FILE)
+            continue;
+        nodes[i].size = 0;
+        for (u32 j = 0; j < sizeof(nodes[i].data); ++j)
+            nodes[i].data[j] = 0;
+        return 1;
+    }
+    return 0;
+}
+
+int vfs_list(u32 parent, u32 index, char *name, u32 name_size, u32 *inode, u32 *type) {
+    if (!name || !name_size)
+        return 0;
+
+    u32 seen = 0;
+    for (u32 i = 0; i < MAX_FILES; ++i) {
+        if (!nodes[i].used || nodes[i].parent != parent)
+            continue;
+        if (seen++ != index)
+            continue;
+
+        u32 j = 0;
+        while (j + 1 < name_size && nodes[i].name[j]) {
+            name[j] = nodes[i].name[j];
+            ++j;
+        }
+        name[j] = 0;
+        if (inode) *inode = nodes[i].inode;
+        if (type) *type = nodes[i].type;
+        return 1;
+    }
+    return 0;
+}
+
+u32 vfs_root(void) {
+    return 1;
+}
