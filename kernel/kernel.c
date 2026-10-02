@@ -2,15 +2,19 @@
 #include "../include/nova/io.h"
 #include "../include/nova/mm.h"
 #include "../include/nova/guest.h"
+#include "../include/nova/interrupts.h"
+#include "../include/nova/process.h"
+#include "../include/nova/vfs.h"
+#include "../include/nova/paging.h"
 
 extern void paging_identity_map_first_4m(void);
-extern void interrupts_init(void);
-extern void process_init(void);
+
+
 extern int process_exec_pe(const char *name);
-extern void process_exit(int status);
+
 extern u32 process_current_pid(void);
-extern void scheduler(void);
-extern void vfs_init(void);
+
+
 extern void gui_init(void);
 extern void gui_render(void);
 extern u32 interrupt_ticks(void);
@@ -120,6 +124,17 @@ void kmain(void) {
     print("Initializing VFS... "); vfs_init(); print("OK\n");
     print("Initializing GUI... "); gui_init(); print("OK\n");
     print("\nNovaOS kernel ready.\n");
+    print("Starting hardware interrupts... ");
+    interrupts_start();
+    print("OK\n");
 
-    for (;;) { gui_render(); hlt(); }
+    for (;;) {
+        while (keyboard_available()) {
+            int c = keyboard_read();
+            if (c >= 0)
+                putc((char)c);
+        }
+        gui_render();
+        hlt();
+    }
 }
