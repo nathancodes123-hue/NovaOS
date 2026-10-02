@@ -165,7 +165,7 @@ int paging_unmap_range(u32 virt, u32 pages) {
 }
 
 int paging_alloc_page(u32 virt, u32 flags) {
-    u32 phys = mm_alloc_zeroed_frame();
+    u32 phys = mm_alloc_frame();
     if (!phys)
         return 0;
 
@@ -173,6 +173,12 @@ int paging_alloc_page(u32 virt, u32 flags) {
         mm_free_frame(phys);
         return 0;
     }
+
+    /* Zero through the mapped virtual address, not the raw physical address. */
+    u8 *p = (u8 *)virt;
+    for (u32 i = 0; i < PAGE_SIZE; ++i)
+        p[i] = 0;
+
     return 1;
 }
 
