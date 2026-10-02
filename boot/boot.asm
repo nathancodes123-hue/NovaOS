@@ -13,85 +13,56 @@ start:
     mov ss, ax
     mov sp, 0x7C00
     mov [boot_drive], dl
-
-    ; BIOS disk services may require hardware interrupts.
     sti
 
     mov si, msg
     call print
 
+    ; Read the kernel using BIOS LBA extensions.
+    ; The previous CHS loader could become unreliable when crossing
+    ; geometry boundaries. QEMU's BIOS supports INT 13h extensions.
     mov si, step1
     call print
 
-    ; Ask BIOS for disk geometry.
     mov dl, [boot_drive]
-    mov ah, 0x08
+    mov ah, 0x41
+    mov bx, 0x55AA
     int 0x13
-    jc disk_geometry_error
+    jc lba_error
+    cmp bx, 0xAA55
+    jne lba_error
+    test cx, 1
+    jz lba_error
 
     mov si, step2
     call print
 
-    and cl, 0x3F
-    mov [sectors_per_track], cl
-    mov [max_head], dh
+    mov word [dap.count], 32
+    mov word [dap.offset], KERNEL_LOAD
+    mov word [dap.segment], 0
+    mov dword [dap.lba_low], 1
+    mov dword [dap.lba_high], 0
 
-    ; Read the kernel one sector at a time.
-    mov byte [current_sector], 2
-    mov byte [current_head], 0
-    mov word [current_cylinder], 0
-    mov word [remaining_sectors], KERNEL_SECTORS
-    mov bx, KERNEL_LOAD
+    mov byte [chunks_left], 4
 
-.read_sector:
-    mov byte [retry_count], DISK_RETRIES
-
-.retry:
+.read_chunk:
     mov si, step3
     call print
 
-    mov ah, 0x02
-    mov al, 1
-    mov ch, byte [current_cylinder]
-    mov cl, [current_sector]
-    mov dh, [current_head]
     mov dl, [boot_drive]
+    mov si, dap
+    mov ah, 0x42
     int 0x13
-    jnc .sector_ok
+    jc disk_error
 
-    mov si, read_error
-    call print
-    xor ah, ah
-    mov dl, [boot_drive]
-    int 0x13
-    dec byte [retry_count]
-    jnz .retry
-    jmp disk_error
-
-.sector_ok:
     mov si, step4
     call print
 
-    add bx, 512
-    dec word [remaining_sectors]
-    jz .all_read
+    add word [dap.offset], 32 * 512
+    add dword [dap.lba_low], 32
+    dec byte [chunks_left]
+    jnz .read_chunk
 
-    inc byte [current_sector]
-    mov al, [current_sector]
-    cmp al, [sectors_per_track]
-    jbe .read_sector
-
-    mov byte [current_sector], 1
-    inc byte [current_head]
-    mov al, [current_head]
-    cmp al, [max_head]
-    jbe .read_sector
-
-    mov byte [current_head], 0
-    inc word [current_cylinder]
-    jmp .read_sector
-
-.all_read:
     mov si, read_ok_msg
     call print
 
@@ -102,8 +73,8 @@ start:
     mov cr0, eax
     jmp 0x08:protected_mode
 
-disk_geometry_error:
-    mov si, geom_error
+lba_error:
+    mov si, lba_err
     call print
     jmp halt
 
@@ -143,24 +114,26 @@ protected_mode:
 
 BITS 16
 boot_drive db 0
-retry_count db 0
-sectors_per_track db 0
-max_head db 0
-current_sector db 0
-current_head db 0
-current_cylinder dw 0
-remaining_sectors dw 0
+chunks_left db 0
 msg db 'NovaOS booting...',13,10,0
 step1 db ' BIOS...',0
-step2 db ' GEOM OK...',0
+step2 db ' LBA OK...',0
 step3 db ' R',0
 step4 db '.',0
-read_error db 'E',0
 read_ok_msg db ' Disk OK',13,10,0
-geom_error db ' BIOS geometry failed.',13,10,0
+lba_err db ' LBA unavailable.',13,10,0
 err db ' Disk read failed.',13,10,0
 
 align 4
+dap:
+    db 0x10, 0
+.count: dw 0
+.offset: dw 0
+.segment: dw 0
+.lba_low: dd 0
+.lba_high: dd 0
+
+align 8
 gdt:
     dq 0
     dw 0xFFFF, 0
