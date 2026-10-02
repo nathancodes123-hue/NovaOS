@@ -15,6 +15,7 @@ extern void isr24(void); extern void isr25(void); extern void isr26(void); exter
 extern void isr28(void); extern void isr29(void); extern void isr30(void); extern void isr31(void);
 extern void irq0_stub(void); extern void irq1_stub(void); extern void syscall_entry(void);
 extern void syscall_tick(void);
+extern void process_tick(void);
 
 #define KEYBUF_SIZE 128u
 static IDTEntry idt[256];
@@ -54,7 +55,7 @@ static void pic_remap(void){
     outb(0x21,0x04);io_wait(); outb(0xA1,0x02);io_wait(); outb(0x21,0x01);io_wait(); outb(0xA1,0x01);io_wait();
     outb(0x21,0xFF); outb(0xA1,0xFF);
 }
-void irq_timer(void){++irq_ticks;syscall_tick();}
+void irq_timer(void){++irq_ticks;syscall_tick();process_tick();}
 void irq_keyboard(void){u8 sc=inb(0x60);if(sc==0x2A||sc==0x36){key_shift=1;return;}if(sc==0xAA||sc==0xB6){key_shift=0;return;}if(sc&0x80u)return;u8 c=scancode_ascii(sc);if(c)key_push(c);}
 void exception_handler(u32 vector,u32 error){(void)error;extern void panic(const char*);if(vector==14)panic("page fault");panic("CPU exception");}
 void interrupts_init(void){
