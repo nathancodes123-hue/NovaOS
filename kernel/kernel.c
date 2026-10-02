@@ -24,7 +24,7 @@ enum { SYS_EXIT=0, SYS_WRITE, SYS_READ, SYS_OPEN, SYS_CLOSE, SYS_GETPID,
 static volatile u32 syscall_ticks;
 static u16 cursor_x, cursor_y;
 
-static void putc(char c) {
+void putc(char c) {
     volatile u16 *vga = (volatile u16 *)0xB8000;
     if (c == '\r') return;
     if (c == '\n') { cursor_x = 0; if (++cursor_y >= 25) cursor_y = 0; return; }
@@ -135,10 +135,6 @@ void kmain(void) {
     print("Initializing VFS... "); vfs_init(); print("OK\n");
     fd_init();
 
-    /*
-     * The graphical compositor is intentionally disabled while NSH is
-     * being developed. This keeps the kernel in stable VGA text mode.
-     */
     print("Initializing Nova Shell... ");
     nsh_init();
     print("OK\n\n");
