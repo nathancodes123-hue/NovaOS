@@ -86,9 +86,10 @@ u32 syscall_dispatch(u32 n,u32 a1,u32 a2,u32 a3) {
     case SYS_WRITE:
         if(!a1||!a2||(a1!=1&&a1!=2)) return (u32)-1;
         { const char *s=(const char*)a2; u32 w=0; while(w<a3&&s[w]){putc(s[w]);++w;} return w; }
-    case SYS_READ:
-        return fd_read((int)a1, (void *)a2, a3) < 0 ? (u32)-1 :
-               (u32)fd_read((int)a1, (void *)a2, a3);
+    case SYS_READ: {
+        int n = fd_read((int)a1, (void *)a2, a3);
+        return n < 0 ? (u32)-1 : (u32)n;
+    }
     case SYS_OPEN:
         return a1 ? (u32)fd_open((const char *)a1) : (u32)-1;
     case SYS_CLOSE:
@@ -96,8 +97,10 @@ u32 syscall_dispatch(u32 n,u32 a1,u32 a2,u32 a3) {
     case SYS_GETPID: return process_current_pid();
     case SYS_SLEEP: return syscall_ticks+a1;
     case SYS_YIELD: scheduler(); return 0;
-    case SYS_MKDIR: return a1?0:(u32)-1;
-    case SYS_CREATE: return a1?0:(u32)-1;
+    case SYS_MKDIR:
+        return a1 ? (u32)(vfs_mkdir(vfs_root(), (const char *)a1) ? 0 : -1) : (u32)-1;
+    case SYS_CREATE:
+        return a1 ? (u32)(vfs_create(vfs_root(), (const char *)a1) ? 0 : -1) : (u32)-1;
     case SYS_GETTIME: return syscall_ticks;
     case SYS_MALLOC: return a1?(u32)kmalloc((usize)a1):0;
     case SYS_FREE: if(a1) kfree((void*)a1); return 0;
