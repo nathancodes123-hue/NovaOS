@@ -19,9 +19,23 @@ typedef struct {
     u32 blocks_per_group;
     u32 frags_per_group;
     u32 inodes_per_group;
+    u32 mtime;
+    u32 wtime;
+    u16 mount_count;
+    u16 max_mount_count;
     u16 magic;
     u16 state;
-    u32 inode_size;
+    u16 errors;
+    u16 minor_rev_level;
+    u32 lastcheck;
+    u32 checkinterval;
+    u32 creator_os;
+    u32 rev_level;
+    u16 default_uid;
+    u16 default_gid;
+    u32 first_ino;
+    u16 inode_size;
+    u16 block_group_nr;
 } __attribute__((packed)) Ext2Super;
 
 typedef struct {
