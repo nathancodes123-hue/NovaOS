@@ -17,17 +17,23 @@ start:
     mov si, msg
     call print
 
-    ; Get BIOS CHS geometry.
+    mov si, step1
+    call print
+
+    ; Ask BIOS for disk geometry.
     mov dl, [boot_drive]
     mov ah, 0x08
     int 0x13
-    jc disk_error
+    jc disk_geometry_error
+
+    mov si, step2
+    call print
 
     and cl, 0x3F
     mov [sectors_per_track], cl
     mov [max_head], dh
 
-    ; Start at CHS 0/0/2 (sector 1 is the boot sector).
+    ; Read the kernel one sector at a time.
     mov byte [current_sector], 2
     mov byte [current_head], 0
     mov word [current_cylinder], 0
@@ -38,6 +44,9 @@ start:
     mov byte [retry_count], DISK_RETRIES
 
 .retry:
+    mov si, step3
+    call print
+
     mov ah, 0x02
     mov al, 1
     mov ch, byte [current_cylinder]
@@ -47,6 +56,8 @@ start:
     int 0x13
     jnc .sector_ok
 
+    mov si, read_error
+    call print
     xor ah, ah
     mov dl, [boot_drive]
     int 0x13
@@ -55,6 +66,9 @@ start:
     jmp disk_error
 
 .sector_ok:
+    mov si, step4
+    call print
+
     add bx, 512
     dec word [remaining_sectors]
     jz .all_read
@@ -84,9 +98,15 @@ start:
     mov cr0, eax
     jmp 0x08:protected_mode
 
+disk_geometry_error:
+    mov si, geom_error
+    call print
+    jmp halt
+
 disk_error:
     mov si, err
     call print
+halt:
     cli
 .hang:
     hlt
@@ -111,11 +131,11 @@ protected_mode:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    call KERNEL_LOAD
-.halt:
+    jmp KERNEL_LOAD
+.halt32:
     cli
     hlt
-    jmp .halt
+    jmp .halt32
 
 BITS 16
 boot_drive db 0
@@ -127,8 +147,14 @@ current_head db 0
 current_cylinder dw 0
 remaining_sectors dw 0
 msg db 'NovaOS booting...',13,10,0
-read_ok_msg db 'Disk OK',13,10,0
-err db 'NovaOS disk read failed.',13,10,0
+step1 db ' BIOS...',0
+step2 db ' GEOM OK...',0
+step3 db ' R',0
+step4 db '.',0
+read_error db 'E',0
+read_ok_msg db ' Disk OK',13,10,0
+geom_error db ' BIOS geometry failed.',13,10,0
+err db ' Disk read failed.',13,10,0
 
 align 4
 gdt:
