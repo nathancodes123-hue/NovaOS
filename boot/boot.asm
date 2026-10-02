@@ -54,9 +54,12 @@ start:
     mov ax, 0x1000
     mov es, ax
 
-    ; Convert zero-based LBA in sector_index to CHS.
+    ; sector_index is the zero-based index within kernel.bin.
+    ; The kernel starts at disk LBA 1 because boot.bin occupies LBA 0.
+    ; Convert the corresponding one-based disk sector to CHS.
     xor dx, dx
     mov ax, [sector_index]
+    inc ax
     div word [sectors_per_track]
     mov [sector_remainder], dx
 
