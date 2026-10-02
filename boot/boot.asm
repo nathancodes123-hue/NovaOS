@@ -15,55 +15,73 @@ start:
 
     mov si, msg
     call print
-    mov si, step1
-    call print
 
     mov dl, [boot_drive]
-    mov ah, 0x41
-    mov bx, 0x55AA
+    mov ah, 0x08
     int 0x13
-    jc lba_error
-    cmp bx, 0xAA55
-    jne lba_error
-    test cx, 1
-    jz lba_error
+    jc geom_error
 
-    mov si, step2
+    mov al, cl
+    and al, 0x3F
+    xor ah, ah
+    test ax, ax
+    jz geom_error
+    mov [sectors_per_track], ax
+
+    xor ax, ax
+    mov al, dh
+    inc ax
+    mov [heads], ax
+
+    mov si, geom_ok
     call print
+
     xor ax, ax
     mov [sector_index], ax
 
 .read_next:
-    mov si, step3
     call print_hex8
-
-    mov ax, [sector_index]
-    shl ax, 5
-    add ax, 0x0100
-    mov [dap.segment], ax
-
-    mov word [dap.count], 1
-    mov word [dap.offset], 0
-
-    xor eax, eax
-    mov ax, [sector_index]
-    inc eax
-    mov [dap.lba_low], eax
-    mov dword [dap.lba_high], 0
-
     mov byte [retries], 3
 
-.try_read:
+.read_attempt:
+    ; Convert zero-based LBA in sector_index to CHS.
+    xor dx, dx
+    mov ax, [sector_index]
+    div word [sectors_per_track]
+    mov [sector_remainder], dx
+
+    xor dx, dx
+    div word [heads]
+    mov [cylinder], ax
+    mov [head], dl
+
+    mov ax, [sector_remainder]
+    inc ax
+    mov [sector_number], al
+
+    mov ax, [cylinder]
+    mov ch, al
+    mov cl, [sector_number]
+    mov al, ah
+    and al, 3
+    shl al, 6
+    or cl, al
+
+    mov dh, [head]
     mov dl, [boot_drive]
-    mov si, dap
-    mov ah, 0x42
+
+    mov bx, [sector_index]
+    shl bx, 9
+    add bx, 0x1000
+
+    mov ax, 0x0201
     int 0x13
     jnc .read_ok
 
     xor ah, ah
     int 0x13
     dec byte [retries]
-    jnz .try_read
+    jnz .read_attempt
     jmp disk_error
 
 .read_ok:
@@ -71,8 +89,9 @@ start:
     cmp word [sector_index], KERNEL_SECTORS
     jb .read_next
 
-    mov si, read_ok_msg
+    mov si, disk_ok
     call print
+
     cli
     lgdt [gdt_descriptor]
     mov eax, cr0
@@ -80,8 +99,8 @@ start:
     mov cr0, eax
     jmp 0x08:protected_mode
 
-lba_error:
-    mov si, lba_err
+geom_error:
+    mov si, geom_err
     call print
     jmp halt
 
@@ -106,11 +125,12 @@ print:
     ret
 
 print_hex8:
+    push ax
     mov al, [sector_index]
-    mov ah, al
     shr al, 4
     call print_nibble
-    mov al, ah
+    pop ax
+    mov al, [sector_index]
     and al, 0x0F
     call print_nibble
     mov al, ' '
@@ -145,23 +165,18 @@ BITS 16
 boot_drive db 0
 sector_index dw 0
 retries db 0
+sectors_per_track dw 0
+heads dw 0
+sector_remainder dw 0
+cylinder dw 0
+head db 0
+sector_number db 0
 
 msg db 'NovaOS booting...',13,10,0
-step1 db ' BIOS...',0
-step2 db ' LBA OK...',0
-step3 db ' ',0
-read_ok_msg db ' Disk OK',13,10,0
-lba_err db ' LBA unavailable.',13,10,0
+geom_ok db ' CHS OK...',0
+disk_ok db ' Disk OK',13,10,0
+geom_err db ' CHS unavailable.',13,10,0
 err db ' Disk read failed.',13,10,0
-
-align 4
-dap:
-    db 0x10, 0
-.count: dw 1
-.offset: dw 0
-.segment: dw 0
-.lba_low: dd 1
-.lba_high: dd 0
 
 align 8
 gdt:
