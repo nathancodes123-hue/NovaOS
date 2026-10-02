@@ -120,3 +120,31 @@ int vfs_list(u32 parent, u32 index, char *name, u32 name_size, u32 *inode, u32 *
 u32 vfs_root(void) {
     return 1;
 }
+
+static int path_name_eq(const char *a, const char *b) {
+    u32 i=0; while(a[i]&&b[i]&&a[i]==b[i])++i; return a[i]==0&&b[i]==0;
+}
+static u32 path_child(u32 parent,const char *name){
+    for(u32 i=0;i<MAX_FILES;++i) if(nodes[i].used&&nodes[i].parent==parent&&path_name_eq(nodes[i].name,name)) return nodes[i].inode;
+    return 0;
+}
+u32 vfs_resolve(u32 cwd,const char *path){
+    if(!path||!path[0])return cwd;
+    u32 current=path[0]=='/'?vfs_root():cwd; char part[MAX_NAME]; u32 pos=path[0]=='/'?1u:0u;
+    while(1){
+        u32 n=0; while(path[pos]=='/')++pos;
+        while(path[pos]&&path[pos]!='/'&&n+1u<MAX_NAME)part[n++]=path[pos++];
+        part[n]=0; if(!part[0])return current;
+        if(path_name_eq(part,".")){}
+        else if(path_name_eq(part,"..")){u32 parent=0;if(vfs_stat(current,NULL,NULL,&parent)&&parent)current=parent;}
+        else{u32 child=path_child(current,part);if(!child)return 0;current=child;}
+        if(!path[pos])return current;
+    }
+}
+int vfs_unlink(u32 parent,const char *name){
+    u32 inode=path_child(parent,name); if(!inode||inode==vfs_root())return 0;
+    u32 type=0;if(!vfs_stat(inode,&type,NULL,NULL))return 0;
+    if(type==NOVA_VFS_DIR){char child[48];u32 ci,ct;if(vfs_list(inode,0,child,sizeof(child),&ci,&ct))return 0;}
+    for(u32 i=0;i<MAX_FILES;++i)if(nodes[i].used&&nodes[i].inode==inode){nodes[i].used=0;return 1;}
+    return 0;
+}
