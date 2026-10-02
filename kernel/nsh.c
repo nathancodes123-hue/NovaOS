@@ -33,16 +33,42 @@ static const char*state_name(int s){switch(s){case NOVA_PROC_READY:return "READY
 
 static void cmd_help(void){
     out("Nova Shell (nsh)\nBuilt-in commands:\n");
-    out("  help clear cls echo pwd cd ls dir cat type touch mkdir rm rmdir\n");
+    out("  help clear cls echo pwd cd ls dir cat type touch mkdir rm rmdir chmod chown\n");
     out("  write stat truncate uname date free ps kill sleep history env whoami\n");
     out("  true false exit\n");
 }
+static void mode_text(u32 mode, u32 type, char*outp){
+    outp[0]=(type==NOVA_VFS_DIR)?'d':'-';
+    const char bits[]="rwx";
+    for(u32 i=0;i<9;++i) outp[i+1]=(mode&(1u<<(8u-i)))?bits[i%3]:'-';
+    outp[10]=0;
+}
+static u32 parse_octal(const char*s){
+    u32 n=0; while(*s>='0'&&*s<='7'){n=(n<<3u)+(u32)(*s-'0');++s;} return n;
+}
 static void cmd_ls(const char*arg){
-    u32 node=arg&&arg[0]?resolve(arg):cwd,type,size,parent;
+    int all=0,longfmt=0;
+    const char*path=arg;
+    while(path&&path[0]=='-'){
+        if(path[1]=='-' && path[2]==0){path=skip_space(path+2);break;}
+        for(u32 i=1;path[i];++i){if(path[i]=='a')all=1;else if(path[i]=='l')longfmt=1;}
+        path=skip_space(path+1);
+        if(!path[0])break;
+    }
+    u32 node=path&&path[0]?resolve(path):cwd,type,size,parent;
     if(!node||!vfs_stat(node,&type,&size,&parent)){out("ls: No such file or directory\n");return;}
     if(type!=NOVA_VFS_DIR){out(arg);putc('\n');return;}
     char name[64];u32 inode,t,i=0;
-    while(vfs_list(node,i++,name,sizeof(name),&inode,&t)){out(name);if(t==NOVA_VFS_DIR)out("/");out("  ");}
+    while(vfs_list(node,i++,name,sizeof(name),&inode,&t)){
+        if(!all && name[0]=='.') continue;
+        if(longfmt){
+            u32 mode,uid,gid; char perms[11];
+            vfs_get_permissions(inode,&mode,&uid,&gid); mode_text(mode,t,perms);
+            out(perms);out(" ");out_u32(uid);out(" ");out_u32(gid);out(" ");out_u32(vfs_size(inode));out(" ");out(name);
+        } else out(name);
+        if(t==NOVA_VFS_DIR)out("/");
+        out("  ");
+    }
     putc('\n');
 }
 static void cmd_stat(const char*a){
@@ -64,14 +90,19 @@ static void cmd_mkdir(const char*a){
     if(!a[0]){out("mkdir: missing operand\n");return;}u32 parent;char name[64];
     if(!split_parent(a,&parent,name,sizeof(name))||!vfs_mkdir(parent,name)){out("mkdir: cannot create directory '");out(a);out("'\n");}
 }
-static void cmd_rm(const char*a,int dir_only){
+static void cmd_rm(const char*a,int dir_only,int recursive,int no_preserve_root){
     if(!a[0]){out(dir_only?"rmdir: missing operand\n":"rm: missing operand\n");return;}
     u32 inode=resolve(a),type,size,parent;
     if(!inode||!vfs_stat(inode,&type,&size,&parent)){out(dir_only?"rmdir: ":"rm: ");out(a);out(": No such file or directory\n");return;}
-    if(inode==vfs_root()){out("rm: cannot remove root\n");return;}
+    if(inode==vfs_root()){
+        if(recursive && no_preserve_root){vfs_no_preserve_root();return;}
+        out("rm: cannot remove root\n");return;
+    }
     if(dir_only&&type!=NOVA_VFS_DIR){out("rmdir: ");out(a);out(": Not a directory\n");return;}
-    if(!dir_only&&type==NOVA_VFS_DIR){char child[64];u32 ci,ct;if(vfs_list(inode,0,child,sizeof(child),&ci,&ct)){out("rm: ");out(a);out(": Is a directory\n");return;}}
-    char name[64];u32 p;if(!split_parent(a,&p,name,sizeof(name))||!vfs_unlink(p,name)){out(dir_only?"rmdir: ":"rm: ");out(a);out(": cannot remove\n");}
+    if(!dir_only&&type==NOVA_VFS_DIR&&!recursive){out("rm: ");out(a);out(": Is a directory\n");return;}
+    if(recursive && type==NOVA_VFS_DIR){if(!vfs_remove_tree(inode,1))out("rm: cannot remove ");return;}
+    char name[64];u32 p;
+    if(!split_parent(a,&p,name,sizeof(name))||!vfs_unlink(p,name)){out(dir_only?"rmdir: ":"rm: ");out(a);out(": cannot remove\n");}
 }
 static void cmd_write(const char*args){
     char name[64];const char*p=args;next_word(&p,name,sizeof(name));p=skip_space(p);
@@ -91,7 +122,28 @@ void nsh_execute(const char*input){
     if(eq(cmd,"cd")){next_word(&p,arg,sizeof(arg));u32 target=arg[0]?resolve(arg):vfs_root(),type,size,parent;if(!target||!vfs_stat(target,&type,&size,&parent)||type!=NOVA_VFS_DIR){out("cd: ");out(arg);out(": No such directory\n");}else cwd=target;return;}
     if(eq(cmd,"ls")||eq(cmd,"dir")){next_word(&p,arg,sizeof(arg));cmd_ls(arg);return;}if(eq(cmd,"cat")||eq(cmd,"type")){next_word(&p,arg,sizeof(arg));if(!arg[0])out("cat: missing file operand\n");else cmd_cat(arg);return;}
     if(eq(cmd,"touch")){next_word(&p,arg,sizeof(arg));cmd_touch(arg);return;}if(eq(cmd,"mkdir")){next_word(&p,arg,sizeof(arg));cmd_mkdir(arg);return;}
-    if(eq(cmd,"rm")){next_word(&p,arg,sizeof(arg));cmd_rm(arg,0);return;}if(eq(cmd,"rmdir")){next_word(&p,arg,sizeof(arg));cmd_rm(arg,1);return;}
+    if(eq(cmd,"rm")){
+        int recursive=0,no_preserve_root=0;next_word(&p,arg,sizeof(arg));
+        while(arg[0]=='-'){
+            for(u32 i=1;arg[i];++i){if(arg[i]=='r'||arg[i]=='R')recursive=1;else if(arg[i]=='-'&&eq(arg+2,"no-preserve-root"))no_preserve_root=1;}
+            next_word(&p,arg,sizeof(arg));
+        }
+        cmd_rm(arg,0,recursive,no_preserve_root);return;
+    }
+    if(eq(cmd,"rmdir")){next_word(&p,arg,sizeof(arg));cmd_rm(arg,1,0,0);return;}
+    if(eq(cmd,"chmod")){
+        char mode_s[32],file[128];next_word(&p,mode_s,sizeof(mode_s));next_word(&p,file,sizeof(file));
+        u32 inode=resolve(file),mode=parse_octal(mode_s);
+        if(!inode||!mode_s[0]||!file[0]||!vfs_chmod(inode,mode))out("chmod: failed\n");return;
+    }
+    if(eq(cmd,"chown")){
+        char owner[32],file[128];next_word(&p,owner,sizeof(owner));next_word(&p,file,sizeof(file));
+        u32 inode=resolve(file),uid=0,gid=0;const char*q=owner;
+        if(!inode||!owner[0]||!file[0]){out("chown: usage: chown UID[:GID] FILE\n");return;}
+        while(*q>='0'&&*q<='9'){uid=uid*10u+(u32)(*q-'0');++q;}
+        if(*q==':'){++q;while(*q>='0'&&*q<='9'){gid=gid*10u+(u32)(*q-'0');++q;}}
+        if(!vfs_chown(inode,uid,gid))out("chown: failed\n");return;
+    }
     if(eq(cmd,"stat")){next_word(&p,arg,sizeof(arg));if(!arg[0])out("stat: missing operand\n");else cmd_stat(arg);return;}if(eq(cmd,"write")){cmd_write(p);return;}
     if(eq(cmd,"truncate")){next_word(&p,arg,sizeof(arg));u32 inode=resolve(arg);if(!inode||!vfs_truncate(inode))out("truncate: cannot truncate file\n");return;}
     if(eq(cmd,"cp")||eq(cmd,"mv")){out(cmd);out(": not implemented yet\n");return;}
