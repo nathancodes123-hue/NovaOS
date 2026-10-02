@@ -7,6 +7,8 @@
 #include "../include/nova/vfs.h"
 #include "../include/nova/paging.h"
 #include "../include/nova/fd.h"
+#include "../include/nova/serial.h"
+#include "../include/nova/rtc.h"
 
 extern void paging_identity_map_first_4m(void);
 
@@ -101,7 +103,7 @@ u32 syscall_dispatch(u32 n,u32 a1,u32 a2,u32 a3) {
         return a1 ? (u32)(vfs_mkdir(vfs_root(), (const char *)a1) ? 0 : -1) : (u32)-1;
     case SYS_CREATE:
         return a1 ? (u32)(vfs_create(vfs_root(), (const char *)a1) ? 0 : -1) : (u32)-1;
-    case SYS_GETTIME: return syscall_ticks;
+    case SYS_GETTIME: { u32 now = rtc_unix_seconds(); return now ? now : syscall_ticks; }
     case SYS_MALLOC: return a1?(u32)kmalloc((usize)a1):0;
     case SYS_FREE: if(a1) kfree((void*)a1); return 0;
     case SYS_EXEC: return a1?(u32)process_exec_pe((const char*)a1):(u32)-1;
@@ -116,7 +118,11 @@ void kmain(void) {
     cli();
     clear_screen();
     print("NovaOS kernel boot\n-----------------\n");
+    serial_init();
+    serial_write("NovaOS kernel boot\\n");
+    rtc_init();
 
+    print("Initializing RTC... "); print(rtc_read((NovaRtcTime[1]){0}) ? "OK\\n" : "unavailable\\n");
     print("Initializing guest tools... ");
     guest_tools_init();
     print("OK"); if (guest_is_virtualized()) print(" (virtualized)"); print("\n");
