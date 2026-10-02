@@ -11,10 +11,10 @@ _start:
     cli
     cld
 
-    ; Use a fixed early stack that is outside the bootloader's 0x7C00 stack
-    ; and below the kernel's loaded image. This keeps startup independent of
-    ; relocatable BSS symbols until the CPU is executing normally.
-    mov esp, 0x90000
+    ; Keep the early kernel stack below the kernel image/BSS.
+    ; The kernel heap is a 1 MiB BSS object, so the old 0x90000
+    ; stack address could be overwritten while BSS/heap is cleared.
+    mov esp, 0x9000
 
     ; Clear the kernel BSS so C globals/statics start at zero.
     mov edi, __bss_start
