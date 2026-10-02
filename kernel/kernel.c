@@ -10,13 +10,11 @@
 #include "../include/nova/serial.h"
 #include "../include/nova/rtc.h"
 #include "../include/nova/pci.h"
-#include "../include/nova/display.h"
+#include "../include/nova/nsh.h"
 
 extern void paging_identity_map_first_4m(void);
 extern int process_exec_pe(const char *name);
 extern u32 process_current_pid(void);
-extern void gui_init(void);
-extern void gui_render(void);
 extern u32 interrupt_ticks(void);
 
 enum { SYS_EXIT=0, SYS_WRITE, SYS_READ, SYS_OPEN, SYS_CLOSE, SYS_GETPID,
@@ -137,15 +135,14 @@ void kmain(void) {
     print("Initializing VFS... "); vfs_init(); print("OK\n");
     fd_init();
 
-    print("Initializing GUI/display... ");
-    gui_init();
-    const NovaDisplayInfo *display = display_info();
-    if (display->graphics) {
-        print("OK (1280x720");
-        print(" default, 3840x2160 maximum)\n");
-    } else {
-        print("text mode fallback\n");
-    }
+    /*
+     * The graphical compositor is intentionally disabled while NSH is
+     * being developed. This keeps the kernel in stable VGA text mode.
+     */
+    print("Initializing Nova Shell... ");
+    nsh_init();
+    print("OK\n\n");
+    print("nsh$ ");
 
     print("\nNovaOS kernel ready.\n");
     print("Starting hardware interrupts... ");
@@ -153,12 +150,7 @@ void kmain(void) {
     print("OK\n");
 
     for (;;) {
-        while (keyboard_available()) {
-            int c = keyboard_read();
-            if (c >= 0)
-                putc((char)c);
-        }
-        gui_render();
+        nsh_run();
         hlt();
     }
 }
