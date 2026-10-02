@@ -147,9 +147,11 @@ u32 mm_alloc_zeroed_frame(void) {
     if (!address)
         return 0;
 
-    u8 *p = (u8 *)address;
-    for (u32 i = 0; i < PAGE_SIZE; ++i)
-        p[i] = 0;
+    /*
+     * Physical memory above the first identity-mapped 4 MiB cannot safely
+     * be touched as a C pointer yet. Keep allocation separate from clearing;
+     * paging_alloc_page() clears a frame through its virtual mapping.
+     */
     return address;
 }
 
