@@ -9,15 +9,12 @@
 #include "../include/nova/fd.h"
 #include "../include/nova/serial.h"
 #include "../include/nova/rtc.h"
+#include "../include/nova/pci.h"
+#include "../include/nova/display.h"
 
 extern void paging_identity_map_first_4m(void);
-
-
 extern int process_exec_pe(const char *name);
-
 extern u32 process_current_pid(void);
-
-
 extern void gui_init(void);
 extern void gui_render(void);
 extern u32 interrupt_ticks(void);
@@ -134,11 +131,22 @@ void kmain(void) {
     print_u32(mm_heap_free()); print(" bytes available\n");
 
     print("Initializing paging... "); paging_identity_map_first_4m(); print("OK\n");
+    print("Initializing PCI... "); pci_init(); print("OK\n");
     print("Initializing interrupts/syscalls... "); interrupts_init(); print("OK\n");
     print("Initializing processes... "); process_init(); print("OK\n");
     print("Initializing VFS... "); vfs_init(); print("OK\n");
     fd_init();
-    print("Initializing GUI... "); gui_init(); print("OK\n");
+
+    print("Initializing GUI/display... ");
+    gui_init();
+    const NovaDisplayInfo *display = display_info();
+    if (display->graphics) {
+        print("OK (1280x720");
+        print(" default, 3840x2160 maximum)\n");
+    } else {
+        print("text mode fallback\n");
+    }
+
     print("\nNovaOS kernel ready.\n");
     print("Starting hardware interrupts... ");
     interrupts_start();
