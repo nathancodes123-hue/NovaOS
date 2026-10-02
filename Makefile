@@ -1,7 +1,7 @@
 CC ?= gcc
 LD := $(shell if command -v ld.lld >/dev/null 2>&1; then command -v ld.lld; elif [ "$$(uname -s 2>/dev/null)" = "Darwin" ] && [ -x /opt/local/libexec/llvm-19/bin/ld.lld ]; then echo /opt/local/libexec/llvm-19/bin/ld.lld; elif [ "$$(uname -s 2>/dev/null)" != "Darwin" ] && command -v ld >/dev/null 2>&1; then command -v ld; else echo ld.lld; fi)
 OBJCOPY := $(shell if command -v objcopy >/dev/null 2>&1; then command -v objcopy; elif command -v llvm-objcopy >/dev/null 2>&1; then command -v llvm-objcopy; elif [ -x /opt/local/libexec/llvm-19/bin/llvm-objcopy ]; then echo /opt/local/libexec/llvm-19/bin/llvm-objcopy; else echo llvm-objcopy; fi)
-CFLAGS=-m32 -ffreestanding -fno-pie -fno-stack-protector -fno-builtin -O2 -Wall -Wextra -mgeneral-regs-only -Iinclude
+CFLAGS=-m32 -ffreestanding -fno-pie -fno-stack-protector -fno-builtin -Oz -ffunction-sections -fdata-sections -Wall -Wextra -mgeneral-regs-only -Iinclude
 
 ifeq ($(shell uname -s 2>/dev/null),Darwin)
 CFLAGS += --target=i386-unknown-none-elf
@@ -25,7 +25,7 @@ kernel/interrupts_asm.o: kernel/interrupts_asm.asm
 	nasm -f elf32 $< -o $@
 
 kernel.bin: $(KERNEL_OBJS) linker.ld
-	$(LD) -m elf_i386 -T linker.ld $(KERNEL_OBJS) -o kernel.elf
+	$(LD) -m elf_i386 --gc-sections -T linker.ld $(KERNEL_OBJS) -o kernel.elf
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 	test $$(stat -c %s kernel.bin 2>/dev/null || stat -f %z $@) -le 61440
 
