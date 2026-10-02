@@ -86,7 +86,7 @@ protected_mode:
 BITS 16
 boot_drive db 0
 retry_count db 0
-msg db 'Logs',13,10,0
+msg db 'NovaOS booting...',13,10,0
 read_ok_msg db 'Disk OK',13,10,0
 err db 'NovaOS disk read failed.',13,10,0
 
