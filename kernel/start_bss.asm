@@ -12,10 +12,13 @@ _start:
     cli
     cld
 
-    ; Clear .bss before entering C so static kernel state starts at zero.
-    mov edi, __bss_start
-    mov ecx, __bss_end
+    ; Move off the bootloader stack before touching the kernel BSS.
+    ; LEA makes these linker symbols explicit addresses, not memory loads.
+    lea esp, [kernel_stack_top]
+    lea edi, [__bss_start]
+    lea ecx, [__bss_end]
     sub ecx, edi
+
     xor eax, eax
     test ecx, ecx
     jz .bss_done
@@ -29,10 +32,6 @@ _start:
     rep stosb
 
 .bss_done:
-    ; The bootloader stack at 0x90000 overlaps the kernel's large .bss.
-    ; Switch to the dedicated stack before entering C.
-    mov esp, kernel_stack_top
-
     call kmain
 
 .hang:
