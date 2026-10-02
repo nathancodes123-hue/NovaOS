@@ -1,5 +1,7 @@
 #include "../include/nova/types.h"
 #include "../include/nova/pe.h"
+#include "../include/nova/interrupts.h"
+#include "../include/nova/process.h"
 
 extern void *kmalloc(usize);
 extern void kfree(void *);
@@ -23,6 +25,8 @@ typedef struct {
     u32 ebp;
     u32 cr3;
     u32 entry;
+    u32 wake_tick;
+    u32 exit_status;
     char name[32];
     u8 *stack;
 } Process;
@@ -57,6 +61,8 @@ int process_create(const char *name) {
         proc[i].ppid = (current < MAX_PROCESSES) ? proc[current].pid : 0;
         proc[i].state = PROC_READY;
         proc[i].entry = 0;
+        proc[i].wake_tick = 0;
+        proc[i].exit_status = 0;
         proc[i].stack = stack;
         proc[i].esp = (u32)(stack + STACK_SIZE - 16);
         proc[i].ebp = proc[i].esp;
@@ -89,10 +95,48 @@ int process_exec_pe(const char *name) {
 }
 
 void process_exit(int status) {
-    (void)status;
-    if (current < MAX_PROCESSES && proc[current].state == PROC_RUNNING)
+    if (current < MAX_PROCESSES && proc[current].state == PROC_RUNNING) {
+        proc[current].exit_status = (u32)status;
         proc[current].state = PROC_ZOMBIE;
+    }
     scheduler();
+}
+
+int process_sleep(u32 ticks) {
+    if (current >= MAX_PROCESSES || proc[current].state != PROC_RUNNING)
+        return 0;
+
+    if (!ticks)
+        return 1;
+
+    proc[current].wake_tick = interrupt_ticks() + ticks;
+    proc[current].state = PROC_BLOCKED;
+    scheduler();
+    return 1;
+}
+
+void process_wake(u32 pid) {
+    int index = process_find(pid);
+    if (index >= 0 && proc[index].state == PROC_BLOCKED) {
+        proc[index].wake_tick = 0;
+        proc[index].state = PROC_READY;
+    }
+}
+
+void process_tick(void) {
+    u32 now = interrupt_ticks();
+    for (u32 i = 0; i < MAX_PROCESSES; ++i) {
+        if (proc[i].state == PROC_BLOCKED &&
+            (u32)(now - proc[i].wake_tick) < 0x80000000u)
+            process_wake(proc[i].pid);
+    }
+
+    /*
+     * This is metadata-level scheduling for now. The real register/stack
+     * context switch is added when the ring-3 task frame is introduced.
+     */
+    if (proc[current].state == PROC_RUNNING)
+        scheduler();
 }
 
 void process_init(void) {
