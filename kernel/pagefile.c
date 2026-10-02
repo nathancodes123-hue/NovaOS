@@ -117,7 +117,7 @@ int pagefile_read(u32 slot, void *page) {
 
 int pagefile_bind(u32 slot, u32 virt, u32 flags) {
     if (!available || !valid_slot(slot) || !slot_used(slot) ||
-        !(virt & (NOVA_PAGEFILE_PAGE_SIZE - 1u)) == 0)
+        (virt & (NOVA_PAGEFILE_PAGE_SIZE - 1u)) != 0)
         return 0;
 
     bindings[slot].virt = virt;
