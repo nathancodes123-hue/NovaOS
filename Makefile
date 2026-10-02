@@ -7,7 +7,7 @@ ifeq ($(shell uname -s 2>/dev/null),Darwin)
 CFLAGS += --target=i386-unknown-none-elf
 endif
 
-KERNEL_OBJS=kernel/start_bss.o kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/string.o kernel/pe.o kernel/gui.o kernel/guest.o kernel/pci.o kernel/ata.o kernel/fd.o kernel/block.o kernel/ext2.o
+KERNEL_OBJS=kernel/start_bss.o kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/string.o kernel/pe.o kernel/gui.o kernel/guest.o kernel/pci.o kernel/ata.o kernel/fd.o kernel/block.o kernel/ext2.o kernel/spinlock.o
 
 all: novaos.bin
 
