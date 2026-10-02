@@ -3,6 +3,7 @@ ORG 0x7C00
 
 KERNEL_SECTORS EQU 120
 KERNEL_LOAD   EQU 0x1000
+DISK_RETRIES  EQU 3
 
 start:
     cli
@@ -22,11 +23,26 @@ start:
     mov dword [dap.lba_low], 1
     mov dword [dap.lba_high], 0
 
-    mov si, dap
+    mov byte [retry_count], DISK_RETRIES
+
+.read_retry:
     mov dl, [boot_drive]
+    mov si, dap
     mov ah, 0x42
     int 0x13
-    jc disk_error
+    jnc .read_ok
+
+    xor ah, ah
+    mov dl, [boot_drive]
+    int 0x13
+    dec byte [retry_count]
+    jnz .read_retry
+
+    jmp disk_error
+
+.read_ok:
+    mov si, read_ok_msg
+    call print
 
     lgdt [gdt_descriptor]
     mov eax, cr0
@@ -69,7 +85,9 @@ protected_mode:
 
 BITS 16
 boot_drive db 0
+retry_count db 0
 msg db 'NovaOS booting...',13,10,0
+read_ok_msg db 'Disk OK',13,10,0
 err db 'NovaOS disk read failed.',13,10,0
 
 align 4
