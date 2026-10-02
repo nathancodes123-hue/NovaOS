@@ -4,8 +4,6 @@ ORG 0x7C00
 KERNEL_SECTORS EQU 120
 KERNEL_LOAD   EQU 0x1000
 DISK_RETRIES  EQU 3
-READ1_SECTORS EQU 64
-READ2_SECTORS EQU 56
 
 start:
     cli
@@ -19,49 +17,64 @@ start:
     mov si, msg
     call print
 
-    mov word [dap.count], READ1_SECTORS
-    mov word [dap.offset], KERNEL_LOAD
-    mov word [dap.segment], 0x0000
-    mov dword [dap.lba_low], 1
-    mov dword [dap.lba_high], 0
+    ; Get BIOS CHS geometry.
+    mov dl, [boot_drive]
+    mov ah, 0x08
+    int 0x13
+    jc disk_error
 
+    and cl, 0x3F
+    mov [sectors_per_track], cl
+    mov [max_head], dh
+
+    ; Start at CHS 0/0/2 (sector 1 is the boot sector).
+    mov byte [current_sector], 2
+    mov byte [current_head], 0
+    mov word [current_cylinder], 0
+    mov word [remaining_sectors], KERNEL_SECTORS
+    mov bx, KERNEL_LOAD
+
+.read_sector:
     mov byte [retry_count], DISK_RETRIES
 
-.read_first:
+.retry:
+    mov ah, 0x02
+    mov al, 1
+    mov ch, byte [current_cylinder]
+    mov cl, [current_sector]
+    mov dh, [current_head]
     mov dl, [boot_drive]
-    mov si, dap
-    mov ah, 0x42
     int 0x13
-    jnc .first_ok
+    jnc .sector_ok
 
     xor ah, ah
     mov dl, [boot_drive]
     int 0x13
     dec byte [retry_count]
-    jnz .read_first
+    jnz .retry
     jmp disk_error
 
-.first_ok:
-    mov word [dap.count], READ2_SECTORS
-    mov word [dap.offset], KERNEL_LOAD + (READ1_SECTORS * 512)
-    mov dword [dap.lba_low], 1 + READ1_SECTORS
-    mov byte [retry_count], DISK_RETRIES
+.sector_ok:
+    add bx, 512
+    dec word [remaining_sectors]
+    jz .all_read
 
-.read_second:
-    mov dl, [boot_drive]
-    mov si, dap
-    mov ah, 0x42
-    int 0x13
-    jnc .read_ok
+    inc byte [current_sector]
+    mov al, [current_sector]
+    cmp al, [sectors_per_track]
+    jbe .read_sector
 
-    xor ah, ah
-    mov dl, [boot_drive]
-    int 0x13
-    dec byte [retry_count]
-    jnz .read_second
-    jmp disk_error
+    mov byte [current_sector], 1
+    inc byte [current_head]
+    mov al, [current_head]
+    cmp al, [max_head]
+    jbe .read_sector
 
-.read_ok:
+    mov byte [current_head], 0
+    inc word [current_cylinder]
+    jmp .read_sector
+
+.all_read:
     mov si, read_ok_msg
     call print
 
@@ -107,20 +120,17 @@ protected_mode:
 BITS 16
 boot_drive db 0
 retry_count db 0
+sectors_per_track db 0
+max_head db 0
+current_sector db 0
+current_head db 0
+current_cylinder dw 0
+remaining_sectors dw 0
 msg db 'NovaOS booting...',13,10,0
 read_ok_msg db 'Disk OK',13,10,0
 err db 'NovaOS disk read failed.',13,10,0
 
 align 4
-dap:
-    db 0x10, 0
-.count: dw 0
-.offset: dw 0
-.segment: dw 0
-.lba_low: dd 0
-.lba_high: dd 0
-
-align 8
 gdt:
     dq 0
     dw 0xFFFF, 0
