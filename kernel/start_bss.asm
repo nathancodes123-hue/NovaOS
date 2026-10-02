@@ -6,17 +6,19 @@ global _start
 extern kmain
 extern __bss_start
 extern __bss_end
-extern kernel_stack_top
 
 _start:
     cli
     cld
 
-    ; Move off the bootloader stack before touching the kernel BSS.
-    ; LEA makes these linker symbols explicit addresses, not memory loads.
-    lea esp, [kernel_stack_top]
-    lea edi, [__bss_start]
-    lea ecx, [__bss_end]
+    ; Use a fixed early stack that is outside the bootloader's 0x7C00 stack
+    ; and below the kernel's loaded image. This keeps startup independent of
+    ; relocatable BSS symbols until the CPU is executing normally.
+    mov esp, 0x90000
+
+    ; Clear the kernel BSS so C globals/statics start at zero.
+    mov edi, __bss_start
+    mov ecx, __bss_end
     sub ecx, edi
 
     xor eax, eax
@@ -38,9 +40,3 @@ _start:
     cli
     hlt
     jmp .hang
-
-section .bss
-align 16
-kernel_stack:
-    resb 16384
-kernel_stack_top:
