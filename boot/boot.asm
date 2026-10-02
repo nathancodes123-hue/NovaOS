@@ -3,7 +3,6 @@ ORG 0x7C00
 
 KERNEL_SECTORS EQU 120
 KERNEL_LOAD   EQU 0x1000
-DISK_RETRIES  EQU 3
 
 start:
     cli
@@ -18,9 +17,6 @@ start:
     mov si, msg
     call print
 
-    ; Read the kernel using BIOS LBA extensions.
-    ; The previous CHS loader could become unreliable when crossing
-    ; geometry boundaries. QEMU's BIOS supports INT 13h extensions.
     mov si, step1
     call print
 
@@ -43,25 +39,29 @@ start:
     mov dword [dap.lba_low], 1
     mov dword [dap.lba_high], 0
 
-    mov byte [chunks_left], 4
-
-.read_chunk:
-    mov si, step3
-    call print
-
-    mov dl, [boot_drive]
-    mov si, dap
-    mov ah, 0x42
-    int 0x13
+    ; First 32 sectors: 0x1000 -> 0x5000
+    call read_chunk
     jc disk_error
 
-    mov si, step4
-    call print
-
-    add word [dap.offset], 32 * 512
+    ; Second 32 sectors: 0x5000 -> 0x9000
+    add word [dap.offset], 0x4000
     add dword [dap.lba_low], 32
-    dec byte [chunks_left]
-    jnz .read_chunk
+    call read_chunk
+    jc disk_error
+
+    ; Third 32 sectors: 0x9000 -> 0xD000
+    add word [dap.offset], 0x4000
+    add dword [dap.lba_low], 32
+    call read_chunk
+    jc disk_error
+
+    ; Final 24 sectors: 0xD000 -> exactly 0x10000.
+    ; Do not use 32 here: that would cross the 64 KiB boundary.
+    mov word [dap.count], 24
+    add word [dap.offset], 0x4000
+    add dword [dap.lba_low], 32
+    call read_chunk
+    jc disk_error
 
     mov si, read_ok_msg
     call print
@@ -72,6 +72,16 @@ start:
     or eax, 1
     mov cr0, eax
     jmp 0x08:protected_mode
+
+read_chunk:
+    mov si, step3
+    call print
+
+    mov dl, [boot_drive]
+    mov si, dap
+    mov ah, 0x42
+    int 0x13
+    ret
 
 lba_error:
     mov si, lba_err
@@ -114,12 +124,10 @@ protected_mode:
 
 BITS 16
 boot_drive db 0
-chunks_left db 0
 msg db 'NovaOS booting...',13,10,0
 step1 db ' BIOS...',0
 step2 db ' LBA OK...',0
 step3 db ' R',0
-step4 db '.',0
 read_ok_msg db ' Disk OK',13,10,0
 lba_err db ' LBA unavailable.',13,10,0
 err db ' Disk read failed.',13,10,0
