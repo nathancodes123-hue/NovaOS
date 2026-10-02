@@ -10,6 +10,9 @@
 #include "../include/nova/serial.h"
 #include "../include/nova/rtc.h"
 #include "../include/nova/pci.h"
+#include "../include/nova/ata.h"
+#include "../include/nova/block.h"
+#include "../include/nova/pagefile.h"
 #include "../include/nova/nsh.h"
 
 extern void paging_identity_map_first_4m(void);
@@ -95,6 +98,9 @@ void kmain(void){
     print("Initializing physical memory... ");mm_init();print("OK\n  frames: ");print_u32(mm_total_count());print(" total, ");print_u32(mm_free_count());print(" free\n  heap: ");print_u32(mm_heap_free());print(" bytes available\n");
     print("Initializing paging... ");paging_identity_map_first_4m();print("OK\n");
     print("Initializing PCI... ");pci_init();print("OK\n");
+    print("Initializing ATA storage... ");ata_init();print(ata_present()?"OK\n":"unavailable\n");
+    print("Initializing block device... ");block_init();print(block_device()->present?"OK\n":"unavailable\n");
+    print("Initializing page file... ");pagefile_init();print(pagefile_available()?"OK\n":"unavailable\n");
     print("Initializing interrupts/syscalls... ");interrupts_init();print("OK\n");
     print("Initializing process manager... ");process_init();print("OK\n");
     print("Starting init (PID 2)... ");print("OK\n");
