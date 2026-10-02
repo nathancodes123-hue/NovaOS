@@ -21,3 +21,8 @@ u32 vfs_size(u32 inode);
 u32 vfs_root(void);
 u32 vfs_resolve(u32 cwd, const char *path);
 int vfs_unlink(u32 parent, const char *name);
+int vfs_remove_tree(u32 inode, int preserve_root);
+int vfs_chmod(u32 inode, u32 mode);
+int vfs_chown(u32 inode, u32 uid, u32 gid);
+int vfs_get_permissions(u32 inode, u32 *mode, u32 *uid, u32 *gid);
+int vfs_no_preserve_root(void);
