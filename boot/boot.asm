@@ -2,7 +2,6 @@ BITS 16
 ORG 0x7C00
 
 KERNEL_SECTORS EQU 120
-KERNEL_LOAD   EQU 0x1000
 
 start:
     cli
@@ -33,32 +32,32 @@ start:
     mov si, step2
     call print
 
+    ; Use segment 0x100:0 as the first kernel destination (physical 0x1000).
+    ; Advancing the segment avoids relying on a large offset in the DAP.
     mov word [dap.count], 32
-    mov word [dap.offset], KERNEL_LOAD
-    mov word [dap.segment], 0
+    mov word [dap.offset], 0
+    mov word [dap.segment], 0x0100
     mov dword [dap.lba_low], 1
     mov dword [dap.lba_high], 0
 
-    ; First 32 sectors: 0x1000 -> 0x5000
     call read_chunk
     jc disk_error
 
-    ; Second 32 sectors: 0x5000 -> 0x9000
-    add word [dap.offset], 0x4000
+    ; 0x5000, LBA 33
+    mov word [dap.segment], 0x0500
     add dword [dap.lba_low], 32
     call read_chunk
     jc disk_error
 
-    ; Third 32 sectors: 0x9000 -> 0xD000
-    add word [dap.offset], 0x4000
+    ; 0x9000, LBA 65
+    mov word [dap.segment], 0x0900
     add dword [dap.lba_low], 32
     call read_chunk
     jc disk_error
 
-    ; Final 24 sectors: 0xD000 -> exactly 0x10000.
-    ; Do not use 32 here: that would cross the 64 KiB boundary.
+    ; 0xD000, LBA 97. 24 sectors ends exactly at 0x10000.
     mov word [dap.count], 24
-    add word [dap.offset], 0x4000
+    mov word [dap.segment], 0x0D00
     add dword [dap.lba_low], 32
     call read_chunk
     jc disk_error
@@ -76,7 +75,6 @@ start:
 read_chunk:
     mov si, step3
     call print
-
     mov dl, [boot_drive]
     mov si, dap
     mov ah, 0x42
@@ -116,7 +114,7 @@ protected_mode:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    jmp KERNEL_LOAD
+    jmp 0x1000
 .halt32:
     cli
     hlt
