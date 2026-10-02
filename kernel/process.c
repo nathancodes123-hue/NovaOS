@@ -1,7 +1,8 @@
 #include "../include/nova/types.h"
 #include "../include/nova/pe.h"
 
-extern void *kmalloc(usize);\nextern void kfree(void *);
+extern void *kmalloc(usize);
+extern void kfree(void *);
 
 #define MAX_PROCESSES 32
 #define STACK_SIZE 8192
