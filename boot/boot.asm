@@ -2,6 +2,7 @@ BITS 16
 ORG 0x7C00
 
 KERNEL_SECTORS EQU 120
+KERNEL_LOAD EQU 0x1000
 
 start:
     cli
@@ -19,6 +20,7 @@ start:
     mov si, step1
     call print
 
+    ; Verify BIOS INT 13h extensions.
     mov dl, [boot_drive]
     mov ah, 0x41
     mov bx, 0x55AA
@@ -32,35 +34,41 @@ start:
     mov si, step2
     call print
 
-    ; Use segment 0x100:0 as the first kernel destination (physical 0x1000).
-    ; Advancing the segment avoids relying on a large offset in the DAP.
-    mov word [dap.count], 32
+    ; Read exactly one sector per BIOS call.
+    ; This deliberately avoids transfer-size and DMA-boundary quirks.
+    xor di, di
+    mov word [sector_index], 0
+
+.read_next:
+    mov si, step3
+    call print
+
+    ; Physical destination = 0x1000 + sector_index * 512.
+    ; Convert it to a segment with offset 0.
+    mov ax, [sector_index]
+    shl ax, 5
+    add ax, 0x0100
+    mov [dap.segment], ax
+
+    mov word [dap.count], 1
     mov word [dap.offset], 0
-    mov word [dap.segment], 0x0100
-    mov dword [dap.lba_low], 1
+
+    ; LBA = sector_index + 1.
+    xor eax, eax
+    mov ax, [sector_index]
+    inc eax
+    mov [dap.lba_low], eax
     mov dword [dap.lba_high], 0
 
-    call read_chunk
+    mov dl, [boot_drive]
+    mov si, dap
+    mov ah, 0x42
+    int 0x13
     jc disk_error
 
-    ; 0x5000, LBA 33
-    mov word [dap.segment], 0x0500
-    add dword [dap.lba_low], 32
-    call read_chunk
-    jc disk_error
-
-    ; 0x9000, LBA 65
-    mov word [dap.segment], 0x0900
-    add dword [dap.lba_low], 32
-    call read_chunk
-    jc disk_error
-
-    ; 0xD000, LBA 97. 24 sectors ends exactly at 0x10000.
-    mov word [dap.count], 24
-    mov word [dap.segment], 0x0D00
-    add dword [dap.lba_low], 32
-    call read_chunk
-    jc disk_error
+    inc word [sector_index]
+    cmp word [sector_index], KERNEL_SECTORS
+    jb .read_next
 
     mov si, read_ok_msg
     call print
@@ -72,15 +80,6 @@ start:
     mov cr0, eax
     jmp 0x08:protected_mode
 
-read_chunk:
-    mov si, step3
-    call print
-    mov dl, [boot_drive]
-    mov si, dap
-    mov ah, 0x42
-    int 0x13
-    ret
-
 lba_error:
     mov si, lba_err
     call print
@@ -89,6 +88,7 @@ lba_error:
 disk_error:
     mov si, err
     call print
+
 halt:
     cli
 .hang:
@@ -115,6 +115,7 @@ protected_mode:
     mov ss, ax
     mov esp, 0x90000
     jmp 0x1000
+
 .halt32:
     cli
     hlt
@@ -122,6 +123,8 @@ protected_mode:
 
 BITS 16
 boot_drive db 0
+sector_index dw 0
+
 msg db 'NovaOS booting...',13,10,0
 step1 db ' BIOS...',0
 step2 db ' LBA OK...',0
@@ -133,10 +136,10 @@ err db ' Disk read failed.',13,10,0
 align 4
 dap:
     db 0x10, 0
-.count: dw 0
+.count: dw 1
 .offset: dw 0
 .segment: dw 0
-.lba_low: dd 0
+.lba_low: dd 1
 .lba_high: dd 0
 
 align 8
@@ -146,6 +149,7 @@ gdt:
     db 0, 0x9A, 0xCF, 0
     dw 0xFFFF, 0
     db 0, 0x92, 0xCF, 0
+
 gdt_descriptor:
     dw gdt_descriptor - gdt - 1
     dd gdt
