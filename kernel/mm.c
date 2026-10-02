@@ -1,75 +1,216 @@
 #include "../include/nova/types.h"
-#define MAX_FRAMES 32768
-#define MAX_REGIONS 32
-#define BLOCK_MIN 16
-#define BLOCK_CLASSES 12
+#include "../include/nova/mm.h"
 
-typedef struct {u32 base,length,type;} MemoryRegion;
-typedef struct {u32 start,end;u8 used;} Range;
-typedef struct FreeBlock {u32 size;struct FreeBlock*next;} FreeBlock;
+#define MAX_FRAMES 32768u
+#define MAX_REGIONS 32u
+#define MAX_RESERVED 128u
+#define BLOCK_MIN 16u
+#define BLOCK_CLASSES 12u
+#define HEAP_SIZE (1024u * 1024u)
+#define ALLOC_MAGIC 0x4E4F5641u
 
-static u32 frame_bits[MAX_FRAMES/32];
+typedef struct { u32 base, length, type; } MemoryRegion;
+typedef struct { u32 start, end; } ReservedRange;
+typedef struct FreeBlock { u32 magic, size; struct FreeBlock *next; } FreeBlock;
+typedef struct { u32 magic, size, class_index; } AllocHeader;
+
+static u32 frame_bits[MAX_FRAMES / 32u];
+static u32 reserved_bits[MAX_FRAMES / 32u];
 static MemoryRegion memory_map[MAX_REGIONS];
-static u32 memory_regions;
-static u32 total_frames,free_frames;
-static Range reserved[128];
-static u32 reserved_count;
-static FreeBlock*free_lists[BLOCK_CLASSES];
-static u8 kernel_heap[1024*1024];
+static ReservedRange reserved[MAX_RESERVED];
+static FreeBlock *free_lists[BLOCK_CLASSES];
+static u8 kernel_heap[HEAP_SIZE];
 
-static void mm_zero(void*p,usize n){u8*b=p;while(n--)*b++=0;}
-static u32 bit_word(u32 f){return f>>5;}
-static u32 bit_mask(u32 f){return 1u<<(f&31);}
-static void frame_set(u32 f){frame_bits[bit_word(f)]|=bit_mask(f);}
-static void frame_clear(u32 f){frame_bits[bit_word(f)]&=~bit_mask(f);}
-static int frame_test(u32 f){return (frame_bits[bit_word(f)]&bit_mask(f))!=0;}
+static u32 memory_regions, reserved_count, total_frames, free_frames;
+static u32 heap_cursor, heap_used_bytes, heap_free_bytes;
 
-void mm_reserve(u32 start,u32 end){
- if(reserved_count<128){reserved[reserved_count++]=(Range){start,end,1};}
- for(u32 a=start&PAGE_MASK;a<end;a+=PAGE_SIZE) frame_set(a/PAGE_SIZE);
+static void mm_zero(void *ptr, usize size) {
+    u8 *p = (u8 *)ptr;
+    while (size--) *p++ = 0;
 }
-void mm_add_region(u32 base,u32 length,u32 type){
- if(memory_regions<MAX_REGIONS)memory_map[memory_regions++]=(MemoryRegion){base,length,type};
+
+static u32 bit_word(u32 frame) { return frame >> 5; }
+static u32 bit_mask(u32 frame) { return 1u << (frame & 31u); }
+
+static void bitmap_set(u32 *bitmap, u32 frame) {
+    bitmap[bit_word(frame)] |= bit_mask(frame);
 }
-static int usable(u32 frame){
- u32 addr=frame*PAGE_SIZE;
- for(u32 i=0;i<memory_regions;i++){
-  MemoryRegion*r=&memory_map[i];
-  if(r->type==1&&addr>=r->base&&addr+PAGE_SIZE<=r->base+r->length)return 1;
- }
- return 0;
+
+static void bitmap_clear(u32 *bitmap, u32 frame) {
+    bitmap[bit_word(frame)] &= ~bit_mask(frame);
 }
-u32 mm_alloc_frame(void){
- for(u32 f=1;f<total_frames;f++)if(usable(f)&&!frame_test(f)){frame_set(f);if(free_frames)free_frames--;return f*PAGE_SIZE;}
- return 0;
+
+static int bitmap_test(const u32 *bitmap, u32 frame) {
+    return (bitmap[bit_word(frame)] & bit_mask(frame)) != 0;
 }
-void mm_free_frame(u32 addr){
- u32 f=addr/PAGE_SIZE;
- if(f<total_frames&&frame_test(f)){frame_clear(f);free_frames++;}
+
+static int region_contains_page(const MemoryRegion *region, u32 address) {
+    if (!region || region->type != 1 || !region->length || address < region->base)
+        return 0;
+    return address < region->base + region->length;
 }
-static u32 class_for(u32 size){u32 c=0,s=BLOCK_MIN;while(c<BLOCK_CLASSES-1&&s<size){s<<=1;c++;}return c;}
-void* kmalloc(usize size){
- if(!size)return NULL;
- size+=sizeof(u32);u32 c=class_for(size);
- if(free_lists[c]){FreeBlock*b=free_lists[c];free_lists[c]=b->next;return (u8*)b+sizeof(u32);}
- static usize cursor=0;
- usize align=(size+15)&~15u;
- if(cursor+align>sizeof(kernel_heap))return NULL;
- u32*p=(u32*)(kernel_heap+cursor);*p=size;cursor+=align;return p+1;
+
+static int frame_usable(u32 frame) {
+    u32 address = frame * PAGE_SIZE;
+    if (frame == 0 || bitmap_test(reserved_bits, frame))
+        return 0;
+
+    for (u32 i = 0; i < memory_regions; ++i)
+        if (region_contains_page(&memory_map[i], address))
+            return 1;
+    return 0;
 }
-void kfree(void*p){
- if(!p)return;
- u32*raw=(u32*)p-1;u32 size=*raw;u32 c=class_for(size);
- FreeBlock*b=(FreeBlock*)raw;b->size=size;b->next=free_lists[c];free_lists[c]=b;
+
+static u32 class_for(u32 size) {
+    u32 c = 0, s = BLOCK_MIN;
+    while (c < BLOCK_CLASSES - 1u && s < size) { s <<= 1; ++c; }
+    return c;
 }
-void mm_init(void){
- mm_zero(frame_bits,sizeof(frame_bits));memory_regions=0;reserved_count=0;
- mm_add_region(0x00000000,0x0009FC00,1);
- mm_add_region(0x00100000,0x03F00000,1);
- total_frames=MAX_FRAMES;free_frames=0;
- mm_reserve(0,0x00100000);
- mm_reserve(0x000A0000,0x00100000);
- for(u32 f=0;f<total_frames;f++)if(usable(f)&&!frame_test(f))free_frames++;
+
+static u32 class_size(u32 c) { return BLOCK_MIN << c; }
+
+void mm_add_region(u32 base, u32 length, u32 type) {
+    if (!length || length > 0xFFFFFFFFu - base || memory_regions >= MAX_REGIONS)
+        return;
+    memory_map[memory_regions++] = (MemoryRegion){base, length, type};
 }
-u32 mm_free_count(void){return free_frames;}
-u32 mm_total_count(void){return total_frames;}
+
+void mm_reserve(u32 start, u32 end) {
+    if (end <= start) return;
+    if (reserved_count < MAX_RESERVED)
+        reserved[reserved_count++] = (ReservedRange){start, end};
+
+    u32 first = start & PAGE_MASK;
+    u32 last = (end + PAGE_SIZE - 1u) & PAGE_MASK;
+    for (u32 address = first; address < last; address += PAGE_SIZE) {
+        u32 frame = address / PAGE_SIZE;
+        if (frame < total_frames) bitmap_set(reserved_bits, frame);
+        if (address > 0xFFFFFFFFu - PAGE_SIZE) break;
+    }
+}
+
+u32 mm_alloc_frame(void) {
+    for (u32 f = 1; f < total_frames; ++f) {
+        if (!frame_usable(f) || bitmap_test(frame_bits, f)) continue;
+        bitmap_set(frame_bits, f);
+        if (free_frames) --free_frames;
+        return f * PAGE_SIZE;
+    }
+    return 0;
+}
+
+int mm_alloc_frames(u32 count, u32 *base) {
+    if (!count || !base) return 0;
+    u32 run = 0, first = 0;
+
+    for (u32 f = 1; f < total_frames; ++f) {
+        if (frame_usable(f) && !bitmap_test(frame_bits, f)) {
+            if (!run) first = f;
+            if (++run == count) {
+                for (u32 x = first; x < first + count; ++x) {
+                    bitmap_set(frame_bits, x);
+                    if (free_frames) --free_frames;
+                }
+                *base = first * PAGE_SIZE;
+                return 1;
+            }
+        } else run = 0;
+    }
+    return 0;
+}
+
+void mm_free_frame(u32 address) {
+    u32 f = address / PAGE_SIZE;
+    if (!address || (address & (PAGE_SIZE - 1u)) ||
+        f >= total_frames || bitmap_test(reserved_bits, f))
+        return;
+    if (bitmap_test(frame_bits, f)) {
+        bitmap_clear(frame_bits, f);
+        ++free_frames;
+    }
+}
+
+void mm_free_frames(u32 base, u32 count) {
+    if (!base || !count || (base & (PAGE_SIZE - 1u))) return;
+    for (u32 i = 0; i < count; ++i) mm_free_frame(base + i * PAGE_SIZE);
+}
+
+void *kmalloc(usize size) {
+    if (!size || size > HEAP_SIZE - sizeof(AllocHeader)) return NULL;
+
+    u32 required = (u32)size + sizeof(AllocHeader);
+    u32 c = class_for(required);
+    u32 slot = class_size(c);
+
+    if (free_lists[c]) {
+        FreeBlock *block = free_lists[c];
+        free_lists[c] = block->next;
+        AllocHeader *h = (AllocHeader *)block;
+        h->magic = ALLOC_MAGIC;
+        h->size = size;
+        h->class_index = c;
+        heap_free_bytes -= slot;
+        heap_used_bytes += slot;
+        return (u8 *)h + sizeof(AllocHeader);
+    }
+
+    u32 aligned = (required + 15u) & ~15u;
+    if (heap_cursor > HEAP_SIZE || aligned > HEAP_SIZE - heap_cursor) return NULL;
+
+    AllocHeader *h = (AllocHeader *)(kernel_heap + heap_cursor);
+    h->magic = ALLOC_MAGIC;
+    h->size = size;
+    h->class_index = c;
+    heap_cursor += aligned;
+    heap_used_bytes += aligned;
+    return (u8 *)h + sizeof(AllocHeader);
+}
+
+void kfree(void *ptr) {
+    if (!ptr) return;
+    u8 *raw = (u8 *)ptr;
+    if (raw < kernel_heap + sizeof(AllocHeader) || raw >= kernel_heap + HEAP_SIZE) return;
+
+    AllocHeader *h = (AllocHeader *)(raw - sizeof(AllocHeader));
+    if (h->magic != ALLOC_MAGIC || h->class_index >= BLOCK_CLASSES) return;
+
+    u32 slot = class_size(h->class_index);
+    FreeBlock *block = (FreeBlock *)h;
+    block->magic = ALLOC_MAGIC;
+    block->size = h->size;
+    block->next = free_lists[h->class_index];
+    free_lists[h->class_index] = block;
+    h->magic = 0;
+
+    if (heap_used_bytes >= slot) heap_used_bytes -= slot;
+    heap_free_bytes += slot;
+}
+
+void mm_init(void) {
+    mm_zero(frame_bits, sizeof(frame_bits));
+    mm_zero(reserved_bits, sizeof(reserved_bits));
+    mm_zero(memory_map, sizeof(memory_map));
+    mm_zero(reserved, sizeof(reserved));
+    mm_zero(free_lists, sizeof(free_lists));
+    mm_zero(kernel_heap, sizeof(kernel_heap));
+
+    memory_regions = reserved_count = 0;
+    total_frames = MAX_FRAMES;
+    free_frames = heap_cursor = heap_used_bytes = heap_free_bytes = 0;
+
+    /* Temporary map until the native bootloader supplies E820/UEFI data. */
+    mm_add_region(0x00000000u, 0x0009FC00u, 1);
+    mm_add_region(0x00100000u, 0x03F00000u, 1);
+
+    mm_reserve(0x00000000u, 0x00100000u);
+    mm_reserve(0x000A0000u, 0x00100000u);
+
+    for (u32 f = 0; f < total_frames; ++f)
+        if (frame_usable(f) && !bitmap_test(frame_bits, f)) ++free_frames;
+}
+
+u32 mm_free_count(void) { return free_frames; }
+u32 mm_total_count(void) { return total_frames; }
+u32 mm_reserved_count(void) { return reserved_count; }
+u32 mm_heap_used(void) { return heap_used_bytes; }
+u32 mm_heap_free(void) { return HEAP_SIZE - heap_used_bytes; }
