@@ -8,6 +8,8 @@
 #include "../include/nova/interrupts.h"
 #include "../include/nova/rtc.h"
 
+extern void panic(const char*message);
+
 #define NSH_LINE 256
 #define NSH_HISTORY 16
 
@@ -34,7 +36,7 @@ static const char*state_name(int s){switch(s){case NOVA_PROC_READY:return "READY
 static void cmd_help(void){
     out("Nova Shell (nsh)\nBuilt-in commands:\n");
     out("  help clear cls echo pwd cd ls dir cat type touch mkdir rm rmdir chmod chown\n");
-    out("  write stat truncate uname date free ps kill sleep history env whoami\n");
+    out("  write stat truncate uname date free ps kill sleep history env whoami panic\n");
     out("  true false exit\n");
 }
 static void mode_text(u32 mode, u32 type, char*outp){
@@ -117,7 +119,7 @@ static void cmd_ps(void){out("PID  STATE    NAME\n");for(u32 i=1;i<=process_coun
 
 void nsh_execute(const char*input){
     const char*p=skip_space(input);char cmd[32],arg[128];next_word(&p,cmd,sizeof(cmd));p=skip_space(p);if(!cmd[0])return;
-    if(eq(cmd,"help")||eq(cmd,"man")){cmd_help();return;}if(eq(cmd,"clear")||eq(cmd,"cls")){volatile u16*v=(volatile u16*)0xB8000;for(u32 i=0;i<2000;++i)v[i]=0x0720;return;}
+    if(eq(cmd,"help")||eq(cmd,"man")){cmd_help();return;}if(eq(cmd,"panic")){char reason[128];next_word(&p,reason,sizeof(reason));if(!reason[0])copy_str(reason,"panic command invoked",sizeof(reason));panic(reason);return;}if(eq(cmd,"clear")||eq(cmd,"cls")){volatile u16*v=(volatile u16*)0xB8000;for(u32 i=0;i<2000;++i)v[i]=0x0720;return;}
     if(eq(cmd,"echo")){out(p);putc('\n');return;}if(eq(cmd,"pwd")){out("/\n");return;}
     if(eq(cmd,"cd")){next_word(&p,arg,sizeof(arg));u32 target=arg[0]?resolve(arg):vfs_root(),type,size,parent;if(!target||!vfs_stat(target,&type,&size,&parent)||type!=NOVA_VFS_DIR){out("cd: ");out(arg);out(": No such directory\n");}else cwd=target;return;}
     if(eq(cmd,"ls")||eq(cmd,"dir")){next_word(&p,arg,sizeof(arg));cmd_ls(arg);return;}if(eq(cmd,"cat")||eq(cmd,"type")){next_word(&p,arg,sizeof(arg));if(!arg[0])out("cat: missing file operand\n");else cmd_cat(arg);return;}
