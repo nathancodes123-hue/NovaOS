@@ -7,6 +7,7 @@
 #include "../include/nova/process.h"
 #include "../include/nova/interrupts.h"
 #include "../include/nova/rtc.h"
+#include "../include/nova/pagefile.h"
 
 extern void panic(const char*message);
 
@@ -37,7 +38,7 @@ static void cmd_help(void){
     out("Nova Shell (nsh)\nBuilt-in commands:\n");
     out("  help clear cls echo pwd cd ls dir cat type touch mkdir rm rmdir chmod chown\n");
     out("  write stat truncate uname date free ps kill sleep history env whoami panic\n");
-    out("  true false exit\n");
+    out("  true false pagefile exit\n");
 }
 static void mode_text(u32 mode, u32 type, char*outp){
     outp[0]=(type==NOVA_VFS_DIR)?'d':'-';
@@ -115,7 +116,17 @@ static void cmd_write(const char*args){
     if(vfs_write(inode,(const u8*)p,n)<0)out("write: failed\n");
 }
 static void cmd_free(void){out("Memory:\n  total frames: ");out_u32(mm_total_count());putc('\n');out("  free frames:  ");out_u32(mm_free_count());putc('\n');out("  heap free:    ");out_u32(mm_heap_free());out(" bytes\n");}
-static void cmd_ps(void){out("PID  STATE    NAME\n");for(u32 i=1;i<=process_count()+4u;++i)if(process_find(i)>=0){out_u32(i);out("  ");out(state_name(process_state(i)));out("  ");out(process_name(i));putc('\n');}}
+static void cmd_ps(void){out("PID  STATE    NAME\n");for(u32 i=1;i<=process_count()+4u;++i)if(process_find(i)>=0){out_u32(i);out("  ");out(state_name(process_state(i)));out("  ");out(process_name(i));putc('\n');}}static void cmd_pagefile(void){
+    out("Page file:\n  status: ");
+    out(pagefile_available()?"available":"unavailable");
+    putc('\n');
+    if(!pagefile_available())return;
+    out("  total: ");out_u32(pagefile_total_pages());out(" pages (");
+    out_u32(pagefile_size_bytes());out(" bytes)\n");
+    out("  used:  ");out_u32(pagefile_used_pages());out(" pages\n");
+    out("  free:  ");out_u32(pagefile_free_pages());out(" pages\n");
+    out("  start LBA: ");out_u32(pagefile_start_lba());putc('\n');
+}
 
 void nsh_execute(const char*input){
     const char*p=skip_space(input);char cmd[32],arg[128];next_word(&p,cmd,sizeof(cmd));p=skip_space(p);if(!cmd[0])return;
@@ -151,7 +162,7 @@ void nsh_execute(const char*input){
     if(eq(cmd,"cp")||eq(cmd,"mv")){out(cmd);out(": not implemented yet\n");return;}
     if(eq(cmd,"uname")){out("NovaOS nova 0.3 i386 x86\n");return;}if(eq(cmd,"whoami")){out("root\n");return;}
     if(eq(cmd,"date")){NovaRtcTime t;if(!rtc_read(&t)){out("date: RTC unavailable\n");return;}out_u32(t.year);putc('-');if(t.month<10)putc('0');out_u32(t.month);putc('-');if(t.day<10)putc('0');out_u32(t.day);putc(' ');if(t.hour<10)putc('0');out_u32(t.hour);putc(':');if(t.minute<10)putc('0');out_u32(t.minute);putc(':');if(t.second<10)putc('0');out_u32(t.second);putc('\n');return;}
-    if(eq(cmd,"free")){cmd_free();return;}if(eq(cmd,"ps")){cmd_ps();return;}
+    if(eq(cmd,"free")){cmd_free();return;}if(eq(cmd,"ps")){cmd_ps();return;}if(eq(cmd,"pagefile")){cmd_pagefile();return;}
     if(eq(cmd,"sleep")){next_word(&p,arg,sizeof(arg));u32 ticks=0;for(u32 i=0;arg[i]>='0'&&arg[i]<='9';++i)ticks=ticks*10u+(arg[i]-'0');process_sleep(ticks);return;}
     if(eq(cmd,"kill")){next_word(&p,arg,sizeof(arg));u32 pid=0;for(u32 i=0;arg[i]>='0'&&arg[i]<='9';++i)pid=pid*10u+(arg[i]-'0');if(!pid||!process_kill(pid,1))out("kill: failed\n");return;}
     if(eq(cmd,"true")||eq(cmd,"false"))return;if(eq(cmd,"env")){out("USER=root\nHOME=/root\nSHELL=/bin/nsh\nPATH=/bin:/system/bin\nPWD=/\n");return;}
