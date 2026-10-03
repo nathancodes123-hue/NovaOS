@@ -1,7 +1,7 @@
 BITS 16
 ORG 0x7C00
 
-KERNEL_SECTORS EQU 120
+KERNEL_SECTORS EQU 240
 
 start:
     cli
@@ -36,11 +36,6 @@ start:
     mov si, geom_ok
     call print
 
-    ; Keep the bootloader at 0x7C00-0x7DFF safe.
-    ; Load the kernel at physical 0x10000 instead.
-    mov ax, 0x1000
-    mov es, ax
-
     xor ax, ax
     mov [sector_index], ax
 
@@ -49,8 +44,13 @@ start:
     mov byte [retries], 3
 
 .read_attempt:
-    mov ax, 0x1000
+    ; Map each 512-byte sector at a fresh 0x20-byte segment.
+    ; This keeps ES:BX from wrapping after the first 64 KiB.
+    mov ax, [sector_index]
+    shl ax, 5
+    add ax, 0x1000
     mov es, ax
+    xor bx, bx
 
     ; sector_index is the zero-based index within kernel.bin.
     ; boot.bin occupies disk LBA 0, so the kernel begins at LBA 1.
@@ -79,9 +79,6 @@ start:
 
     mov dh, [head]
     mov dl, [boot_drive]
-
-    mov bx, [sector_index]
-    shl bx, 9
 
     mov ax, 0x0201
     int 0x13
@@ -172,7 +169,6 @@ protected_mode:
     mov esp, 0x90000
 
     ; Jump to the linked kernel entry using an absolute register target.
-    ; This avoids a bad relative displacement in the flat boot sector.
     mov eax, 0x10000
     jmp eax
 
