@@ -13,6 +13,7 @@
 #include "../include/nova/ata.h"
 #include "../include/nova/block.h"
 #include "../include/nova/pagefile.h"
+#include "../include/nova/cpu.h"
 #include "../include/nova/nsh.h"
 
 extern void paging_identity_map_first_4m(void);
@@ -92,7 +93,8 @@ u32 syscall_handler(u32 n,u32 a1,u32 a2,u32 a3){return syscall_dispatch(n,a1,a2,
 void syscall_tick(void){++syscall_ticks;}
 
 void kmain(void){
-    cli();clear_screen();print("NovaOS kernel boot\n-----------------\n");serial_init();serial_write("NovaOS kernel boot\\n");rtc_init();
+    cli();clear_screen();print("NovaOS kernel boot\n-----------------\n");serial_init();serial_write("NovaOS kernel boot\n");rtc_init();
+    print("Initializing CPU... ");int cpu_ok=cpu_init();print(cpu_ok?"OK":"CPUID unavailable");if(cpu_ok){NovaCpuInfo cpu;cpu_get_info(&cpu);print(" (");print(cpu.vendor);print(")");}print("\n");
     NovaRtcTime rtc_time;print("Initializing RTC... ");print(rtc_read(&rtc_time)?"OK\n":"unavailable\n");
     print("Initializing guest tools... ");guest_tools_init();print("OK");if(guest_is_virtualized())print(" (virtualized)");print("\n");
     print("Initializing physical memory... ");mm_init();print("OK\n  frames: ");print_u32(mm_total_count());print(" total, ");print_u32(mm_free_count());print(" free\n  heap: ");print_u32(mm_heap_free());print(" bytes available\n");
