@@ -20,5 +20,8 @@ int paging_alloc_pages(u32 virt, u32 pages, u32 flags);
 int paging_free_page(u32 virt);
 int paging_free_pages(u32 virt, u32 pages);
 
+int paging_swap_out(u32 virt, u32 slot);
+int paging_swap_in(u32 virt, u32 slot, u32 flags);
+
 u32 paging_directory(void);
 u32 paging_table_count(void);
