@@ -1,7 +1,9 @@
 name: NovaOS Build
+
 on:
   push:
     branches: [ main ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -12,6 +14,9 @@ jobs:
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y nasm gcc-multilib binutils lld
       - name: Build
-        run: make
-      - name: Check kernel size
-        run: test -s novaos.bin && stat -c '%n %s bytes' novaos.bin
+        run: make clean && make
+      - name: Check artifacts
+        run: |
+          test -s kernel.bin
+          test -s novaos.bin
+          stat -c '%n %s bytes' kernel.bin novaos.bin
