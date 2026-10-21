@@ -7,7 +7,32 @@ ifeq ($(shell uname -s 2>/dev/null),Darwin)
 CFLAGS += --target=i386-unknown-none-elf
 endif
 
-KERNEL_OBJS=kernel/start_bss.o kernel/kernel.o kernel/mm.o kernel/paging.o kernel/interrupts.o kernel/interrupts_asm.o kernel/process.o kernel/vfs.o kernel/string.o kernel/pe.o kernel/gui.o kernel/display.o kernel/nsh.o kernel/guest.o kernel/pci.o kernel/ata.o kernel/fd.o kernel/block.o kernel/ext2.o kernel/spinlock.o kernel/serial.o kernel/rtc.o kernel/pagefile.o kernel/cpu.o kernel/bootdiag.o
+KERNEL_OBJS= \
+ kernel/arch/i386/start_bss.o \
+ kernel/core/kernel.o \
+ kernel/memory/mm.o \
+ kernel/memory/paging.o \
+ kernel/interrupts/interrupts.o \
+ kernel/arch/i386/interrupts_asm.o \
+ kernel/process/process.o \
+ kernel/fs/vfs.o \
+ kernel/lib/string.o \
+ kernel/exec/pe.o \
+ kernel/graphics/gui.o \
+ kernel/graphics/display.o \
+ kernel/shell/nsh.o \
+ kernel/virtualization/guest.o \
+ kernel/drivers/pci/pci.o \
+ kernel/drivers/storage/ata.o \
+ kernel/io/fd.o \
+ kernel/drivers/storage/block.o \
+ kernel/fs/ext2.o \
+ kernel/locking/spinlock.o \
+ kernel/drivers/serial/serial.o \
+ kernel/time/rtc.o \
+ kernel/memory/pagefile.o \
+ kernel/cpu/cpu.o \
+ kernel/diagnostics/bootdiag.o
 
 all: novaos.bin
 
@@ -16,12 +41,11 @@ boot.bin: boot/boot.asm
 	test $$(stat -c %s $@ 2>/dev/null || stat -f %z $@) -eq 512
 
 kernel/%.o: kernel/%.c
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-kernel/start_bss.o: kernel/start_bss.asm
-	nasm -f elf32 $< -o $@
-
-kernel/interrupts_asm.o: kernel/interrupts_asm.asm
+kernel/arch/i386/%.o: kernel/arch/i386/%.asm
+	mkdir -p $(dir $@)
 	nasm -f elf32 $< -o $@
 
 kernel.bin: $(KERNEL_OBJS) linker.ld
@@ -37,4 +61,4 @@ run: novaos.bin
 	qemu-system-i386 -drive format=raw,file=novaos.bin
 
 clean:
-	rm -f boot.bin kernel/*.o kernel.elf kernel.bin novaos.bin
+	rm -f boot.bin kernel/*.o $(KERNEL_OBJS) kernel.elf kernel.bin novaos.bin
